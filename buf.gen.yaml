@@ -1,0 +1,27 @@
+version: v1
+plugins:
+  - plugin: buf.build/community/neoeinstein-prost:v0.4.0
+    out: src/gen
+    opt:
+      - bytes=.
+      - file_descriptor_set
+      - compile_well_known_types
+      - extern_path=.google.protobuf.Timestamp=::prost_wkt_types::Timestamp
+      - extern_path=.google.protobuf.Struct=::prost_wkt_types::Struct
+      - extern_path=.google.protobuf.Value=::prost_wkt_types::Value
+      - extern_path=.google.protobuf.ListValue=::prost_wkt_types::ListValue
+      - extern_path=.google.protobuf.Int32Value=i32
+      - extern_path=.google.protobuf.Any=::prost_wkt_types::Any
+  - plugin: buf.build/community/neoeinstein-prost-serde:v0.3.1
+    out: src/gen
+  - plugin: buf.build/community/neoeinstein-tonic:v0.4.1
+    out: src/gen
+    opt:
+      - no_server
+      - compile_well_known_types
+      - extern_path=.google.protobuf.Timestamp=::prost_wkt_types::Timestamp
+      - extern_path=.google.protobuf.Struct=::prost_wkt_types::Struct
+      - extern_path=.google.protobuf.Value=::prost_wkt_types::Value
+      - extern_path=.google.protobuf.ListValue=::prost_wkt_types::ListValue
+      - extern_path=.google.protobuf.Int32Value=i32
+      - extern_path=.google.protobuf.Any=::prost_wkt_types::Any

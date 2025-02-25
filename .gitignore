@@ -1,0 +1,102 @@
+# Repository specific gitignores
+tmp/
+buf.yaml
+buf.lock
+target
+Cargo.locks
+
+node_modules/
+
+# Ignore local DB files
+*.db
+*.db-*
+.sentryclirc
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+**.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Locally generated SBOMs
+**/bom.xml
+
+build_rs_cov.profraw
+
+coverage/*
+
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+**/*.env*
+!.env.example
+
+.bacon.toml
+
+# Book
+/docs/guide/book
+
+docker/**/data
+
+**/frontend/src/bindings/*
+
+# Volume mounts
+deployment/**/volumes/**/data
+
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+.pnp
+.pnp.js
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Testing
+coverage
+
+# Turbo
+.turbo
+
+# Vercel
+.vercel
+
+# Build Outputs
+.next/
+out/
+build
+dist
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.DS_Store
+*.pem

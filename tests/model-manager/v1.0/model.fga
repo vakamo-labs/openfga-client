@@ -1,0 +1,14 @@
+model
+  schema 1.1
+
+type auth_model_id
+
+type model_version
+  relations
+    define openfga_id: [auth_model_id]
+    define exists: [auth_model_id:*]
+
+type employee
+  relations
+    define can_manage: manager or can_manage from manager
+    define manager: [employee]

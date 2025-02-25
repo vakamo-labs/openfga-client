@@ -1,0 +1,1 @@
+{"schema_version":"1.1","type_definitions":[{"type":"auth_model_id"},{"metadata":{"relations":{"exists":{"directly_related_user_types":[{"type":"auth_model_id","wildcard":{}}]},"openfga_id":{"directly_related_user_types":[{"type":"auth_model_id"}]}}},"relations":{"exists":{"this":{}},"openfga_id":{"this":{}}},"type":"model_version"}]}
