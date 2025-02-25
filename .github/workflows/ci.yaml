@@ -17,8 +17,8 @@ env:
   # Change to specific Rust release to pin
   rust_stable: stable
   rust_nightly: nightly-2025-01-25
-  rust_clippy: '1.85'
-  rust_min: '1.81'
+  rust_toolchain: '1.84'
+  rust_min: '1.80'
 
 defaults:
   run:
@@ -37,6 +37,7 @@ jobs:
       - clippy
       - docs
       - test
+      - test-min
     steps:
       - run: exit 0
 
@@ -46,14 +47,14 @@ jobs:
     steps:
       - run: sudo snap install --edge --classic just
       - uses: actions/checkout@v4
-      - name: Install Rust ${{ env.rust_clippy }}
+      - name: Install Rust ${{ env.rust_nightly }}
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_stable }}
+          toolchain: ${{ env.rust_nightly }}
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: "just check-format"
-        run: just check-format
+        run: just check-format    
 
   clippy:
     name: clippy
@@ -61,10 +62,12 @@ jobs:
     steps:
       - run: sudo snap install --edge --classic just
       - uses: actions/checkout@v4
-      - name: Install Rust ${{ env.rust_clippy }}
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+      - name: Install Rust ${{ env.rust_toolchain }}
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_clippy }}
+          toolchain: ${{ env.rust_toolchain }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: "just check-clippy"
@@ -88,7 +91,7 @@ jobs:
         env:
           RUSTFLAGS: --cfg docsrs ${{ matrix.run.RUSTFLAGS }}
           RUSTDOCFLAGS: --cfg docsrs -Dwarnings ${{ matrix.run.RUSTDOCFLAGS }}
-
+        
   test:
     name: test
     runs-on: ubuntu-latest
@@ -100,11 +103,14 @@ jobs:
         with:
           toolchain: ${{ env.rust_stable }}
       - uses: Swatinem/rust-cache@v2
+      - name: Setup openfga
+        run: docker run -d -p 36081:8081 openfga/openfga:v1.8 run
       - name: "just test"
         run: just test
         env:
           RUSTFLAGS: ${{ env.RUSTFLAGS }}
           RUST_BACKTRACE: ${{ env.RUST_BACKTRACE }}
+          TEST_OPENFGA_CLIENT_GRPC_URL: http://localhost:36081
 
   test-min:
     name: test-min
@@ -117,8 +123,11 @@ jobs:
         with:
           toolchain: ${{ env.rust_min }}
       - uses: Swatinem/rust-cache@v2
+      - name: Setup openfga
+        run: docker run -d -p 36081:8081 openfga/openfga:v1.8 run
       - name: "just test"
         run: just test
         env:
           RUSTFLAGS: ${{ env.RUSTFLAGS }}
           RUST_BACKTRACE: ${{ env.RUST_BACKTRACE }}
+          TEST_OPENFGA_CLIENT_GRPC_URL: http://localhost:36081

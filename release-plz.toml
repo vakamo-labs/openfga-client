@@ -1,6 +1,0 @@
-[workspace]
-release = false
-
-[[package]] # the double square brackets define a TOML table array
-name = "openfga-client"
-release = true

@@ -55,10 +55,10 @@ install-buf:
 
 [private]
 fmt:
-    cargo +nightly fmt --all
+    cargo +nightly-2025-01-25 fmt --all
 
 check-format:
-	cargo +nightly fmt --all -- --check
+	cargo +nightly-2025-01-25 fmt --all -- --check
 
 check-clippy:
 	cargo clippy --all-features --workspace -- -D warnings
@@ -70,7 +70,7 @@ check-cargo-sort:
 
 fix-format:
     cargo clippy --all-targets --all-features --workspace --fix --allow-staged
-    cargo +nightly fmt --all
+    cargo +nightly-2025-01-25 fmt --all
     cargo sort -w
 
 check: check-format check-clippy check-cargo-sort
