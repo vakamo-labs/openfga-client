@@ -100,11 +100,14 @@ jobs:
         with:
           toolchain: ${{ env.rust_stable }}
       - uses: Swatinem/rust-cache@v2
+      - name: Setup openfga
+        run: docker run -d -p 35081:8081 openfga/openfga:v1.8 run
       - name: "just test"
         run: just test
         env:
           RUSTFLAGS: ${{ env.RUSTFLAGS }}
           RUST_BACKTRACE: ${{ env.RUST_BACKTRACE }}
+          TEST_OPENFGA_CLIENT_GRPC_URL: http://localhost:36081
 
   test-min:
     name: test-min
@@ -117,8 +120,11 @@ jobs:
         with:
           toolchain: ${{ env.rust_min }}
       - uses: Swatinem/rust-cache@v2
+      - name: Setup openfga
+        run: docker run -d -p 35081:8081 openfga/openfga:v1.8 run
       - name: "just test"
         run: just test
         env:
           RUSTFLAGS: ${{ env.RUSTFLAGS }}
           RUST_BACKTRACE: ${{ env.RUST_BACKTRACE }}
+          TEST_OPENFGA_CLIENT_GRPC_URL: http://localhost:36081
