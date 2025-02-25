@@ -103,7 +103,7 @@ jobs:
           toolchain: ${{ env.rust_stable }}
       - uses: Swatinem/rust-cache@v2
       - name: Setup openfga
-        run: docker run -d -p 35081:8081 openfga/openfga:v1.8 run
+        run: docker run -d -p 36081:8081 openfga/openfga:v1.8 run
       - name: "just test"
         run: just test
         env:
@@ -123,7 +123,7 @@ jobs:
           toolchain: ${{ env.rust_min }}
       - uses: Swatinem/rust-cache@v2
       - name: Setup openfga
-        run: docker run -d -p 35081:8081 openfga/openfga:v1.8 run
+        run: docker run -d -p 36081:8081 openfga/openfga:v1.8 run
       - name: "just test"
         run: just test
         env:
