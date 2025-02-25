@@ -37,6 +37,7 @@ jobs:
       - clippy
       - docs
       - test
+      - test-min
     steps:
       - run: exit 0
 
