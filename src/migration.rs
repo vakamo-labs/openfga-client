@@ -377,7 +377,7 @@ where
         let migrations_to_perform = ordered_migrations
             .into_iter()
             .filter(|m| {
-                max_existing_model.map_or(true, |max_existing| m.model.version() > max_existing)
+                max_existing_model.is_none_or(|max_existing| m.model.version() > max_existing)
             })
             .collect::<Vec<_>>();
 
