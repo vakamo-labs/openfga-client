@@ -8,7 +8,7 @@
 
 //! # OpenFGA Rust Client
 //!
-//! [![Crates.io](https://img.shields.io/crates/v/middle)](https://crates.io/crates/openfga-client)
+//! [![Crates.io](https://img.shields.io/crates/v/openfga-client)](https://crates.io/crates/openfga-client)
 //! [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 //! [![Tests](https://github.com/vakamo-labs/openfga-client/actions/workflows/ci.yaml/badge.svg)](https://github.com/vakamo-labs/openfga-client/actions/workflows/ci.yaml)
 //!
