@@ -8,6 +8,7 @@ repository = "https://github.com/vakamo-labs/openfga-client.git"
 authors = ["Christian Thiel"]
 include = ["/src", "**/**.rs", "LICENSE", "README.md", "!tmp/**"]
 resolver = "2"
+rust-version = "1.81.0"
 
 [features]
 all = ["tls-rustls", "tls-native-roots", "auth-middle"]
@@ -18,7 +19,7 @@ auth-middle = ["dep:middle", "tower"]
 
 [dependencies]
 http = "1"
-middle = { version = "0.2.0", optional = true, features = ["tonic"] }
+middle = { version = "0.3", optional = true, features = ["tonic"] }
 prost = { version = "0.13", features = ["std", "prost-derive"] }
 prost-types = "0.13"
 prost-wkt = "0.6"
