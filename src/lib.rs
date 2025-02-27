@@ -79,12 +79,15 @@
 //! Contributions are welcome! Please open an issue or submit a pull request on GitHub.
 
 pub use prost_types;
+pub use prost_wkt_types;
 pub use tonic;
+pub mod display;
 pub mod error;
 pub mod migration;
 
 mod client_ext;
 mod conversions;
+mod model_client;
 
 mod generated {
     #![allow(clippy::all)]
@@ -99,6 +102,8 @@ pub mod client {
     #[cfg(feature = "auth-middle")]
     pub use super::client_ext::BasicOpenFgaServiceClient;
     pub use super::generated::*;
+
+    pub use super::model_client::OpenFgaClient;
 }
 
 #[cfg(test)]

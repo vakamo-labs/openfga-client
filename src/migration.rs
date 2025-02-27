@@ -530,7 +530,7 @@ impl<T> std::fmt::Debug for Migration<T> {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use std::sync::Mutex;
 
     use needs_env_var::needs_env_var;
@@ -613,7 +613,7 @@ mod test {
     }
 
     #[needs_env_var(TEST_OPENFGA_CLIENT_GRPC_URL)]
-    mod openfga {
+    pub(crate) mod openfga {
         use std::{str::FromStr, sync::Mutex};
 
         use pretty_assertions::assert_eq;
@@ -621,7 +621,8 @@ mod test {
         use super::*;
         use crate::client::{OpenFgaServiceClient, ReadAuthorizationModelRequest};
 
-        async fn get_client() -> OpenFgaServiceClient<tonic::transport::Channel> {
+        pub(crate) async fn get_service_client() -> OpenFgaServiceClient<tonic::transport::Channel>
+        {
             let endpoint = std::env::var("TEST_OPENFGA_CLIENT_GRPC_URL").unwrap();
             let endpoint = tonic::transport::Endpoint::from_str(&endpoint).unwrap();
             OpenFgaServiceClient::connect(endpoint)
@@ -629,8 +630,9 @@ mod test {
                 .expect("Client can be created")
         }
 
-        async fn client_with_store() -> (OpenFgaServiceClient<tonic::transport::Channel>, Store) {
-            let mut client = get_client().await;
+        pub(crate) async fn service_client_with_store(
+        ) -> (OpenFgaServiceClient<tonic::transport::Channel>, Store) {
+            let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let store = client.get_or_create_store(&store_name).await.unwrap();
             (client, store)
@@ -638,7 +640,7 @@ mod test {
 
         #[tokio::test]
         async fn test_get_existing_versions_nonexistent_store() {
-            let client = get_client().await;
+            let client = get_service_client().await;
             let mut manager =
                 TupleModelManager::new(client, "nonexistent".to_string(), "test".to_string());
 
@@ -648,7 +650,7 @@ mod test {
 
         #[tokio::test]
         async fn test_get_existing_versions_nonexistent_auth_model() {
-            let mut client = get_client().await;
+            let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let _store = client.get_or_create_store(&store_name).await.unwrap();
             let mut manager = TupleModelManager::new(client, store_name, "test".to_string());
@@ -658,7 +660,7 @@ mod test {
 
         #[tokio::test]
         async fn test_get_authorization_model_id() {
-            let (mut client, store) = client_with_store().await;
+            let (mut client, store) = service_client_with_store().await;
             let model_prefix = "test";
             let version = AuthorizationModelVersion::new(1, 0);
 
@@ -725,7 +727,7 @@ mod test {
         #[tokio::test]
         async fn test_model_manager() {
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
-            let mut client = get_client().await;
+            let mut client = get_service_client().await;
 
             let model_1_0: AuthorizationModel =
                 serde_json::from_str(include_str!("../tests/model-manager/v1.0/schema.json"))

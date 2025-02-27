@@ -72,14 +72,14 @@ impl BasicOpenFgaServiceClient {
         endpoint: &str,
         client_id: &str,
         client_secret: &str,
-        token_endpoint: &url::Url,
+        token_endpoint: impl Into<url::Url>,
     ) -> Result<Self> {
         let either_or_option: EitherOrOption =
             Some(tower::util::Either::Left(tonic::service::interceptor(
                 middle::BasicClientCredentialAuthorizer::basic_builder(
                     client_id,
                     client_secret,
-                    token_endpoint.clone(),
+                    token_endpoint.into(),
                 )
                 .build()
                 .await.map_err(|e| {
@@ -178,14 +178,16 @@ where
     pub async fn read_all_pages(
         &mut self,
         store_id: &str,
-        tuple: ReadRequestTupleKey,
-        consistency: ConsistencyPreference,
+        tuple: impl Into<ReadRequestTupleKey>,
+        consistency: impl Into<ConsistencyPreference>,
         page_size: i32,
         max_pages: u32,
     ) -> Result<Vec<Tuple>> {
         let mut continuation_token = String::new();
         let mut tuples = Vec::new();
         let mut count = 0;
+        let tuple = tuple.into();
+        let consistency = consistency.into();
 
         loop {
             let read_request = ReadRequest {

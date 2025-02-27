@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use tonic::codegen::StdError;
 
-use crate::generated::ReadRequestTupleKey;
+use crate::{
+    client::{CheckRequest, ReadRequest, WriteRequest},
+    generated::ReadRequestTupleKey,
+};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -10,9 +13,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Multiple stores with the name `{0}` found")]
     AmbiguousStoreName(String),
-    #[error("Request to OpenFGA failed")]
+    #[error("Request to OpenFGA failed with status: {0}")]
     RequestFailed(tonic::Status),
-    #[error("Too many pages")]
+    #[error("Too many pages returned for tuple {tuple}. Max pages: {max_pages}")]
     TooManyPages {
         max_pages: u32,
         tuple: ReadRequestTupleKey,
@@ -39,6 +42,25 @@ pub enum Error {
     AmbiguousModelVersion {
         model_prefix: String,
         version: String,
+    },
+    #[error(
+        "Too many writes and deletes in single OpenFGA transaction (actual) {actual} > {max} (max)"
+    )]
+    TooManyWrites { actual: i32, max: i32 },
+    #[error("Failed to write Authorization tuples: {source}")]
+    WriteFailed {
+        write_request: WriteRequest,
+        source: tonic::Status,
+    },
+    #[error("Failed to read Authorization tuples: {source}")]
+    ReadFailed {
+        read_request: ReadRequest,
+        source: tonic::Status,
+    },
+    #[error("Authorization check failed")]
+    CheckFailed {
+        check_request: CheckRequest,
+        source: tonic::Status,
     },
 }
 
