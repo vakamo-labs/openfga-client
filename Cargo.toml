@@ -1,6 +1,6 @@
 [package]
 name = "openfga-client"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "Apache-2.0"
 description = "Type-safe client for OpenFGA with optional Authorization Model management and Authentication (Bearer or Client Credentials)."
