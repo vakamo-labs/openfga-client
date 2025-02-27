@@ -101,9 +101,10 @@ pub mod client {
 
     #[cfg(feature = "auth-middle")]
     pub use super::client_ext::BasicOpenFgaServiceClient;
-    pub use super::generated::*;
-
-    pub use super::model_client::OpenFgaClient;
+    pub use super::{
+        generated::*,
+        model_client::{BasicOpenFgaClient, OpenFgaClient},
+    };
 }
 
 #[cfg(test)]

@@ -18,6 +18,8 @@ tls-webpki-roots = ["tonic/tls-webpki-roots"]
 auth-middle = ["dep:middle", "tower"]
 
 [dependencies]
+async-stream = "0.3"
+futures = "0.3"
 http = "1"
 middle = { version = "0.3", optional = true, features = ["tonic"] }
 prost = { version = "0.13", features = ["std", "prost-derive"] }
@@ -34,13 +36,11 @@ tonic = { version = "0.12", default-features = false, features = [
 tower = { version = "0.5", optional = true }
 tracing = "0.1"
 url = "2.5"
-async-stream = "0.3"
-futures = "0.3"
 
 [dev-dependencies]
 needs_env_var = "1.1.0"
 pretty_assertions = "1.4"
 serde_json = "1.0"
 tokio = { version = "1.41", features = ["full"] }
-uuid = { version = "1.14", features = ["v7"] }
 tracing-test = "0.2"
+uuid = { version = "1.14", features = ["v7"] }

@@ -836,6 +836,7 @@ pub(crate) mod test {
         }
     }
 
+    #[allow(clippy::unused_async)]
     async fn v1_pre_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
         counter_mutex: Arc<Mutex<i32>>,
@@ -853,6 +854,7 @@ pub(crate) mod test {
         Ok(())
     }
 
+    #[allow(clippy::unused_async)]
     async fn v2_post_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
         counter_mutex: Arc<Mutex<i32>>,

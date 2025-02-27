@@ -22,7 +22,7 @@ use crate::{
 /// authentication with pre-shared keys (Bearer tokens) or client credentials.
 /// For more fine-granular control, you can construct [`OpenFgaServiceClient`] directly
 /// using interceptors for Authentication.
-pub type BasicOpenFgaServiceClient = OpenFgaServiceClient<AuthLayer>;
+pub type BasicOpenFgaServiceClient = OpenFgaServiceClient<BasicAuthLayer>;
 
 #[cfg(feature = "auth-middle")]
 impl BasicOpenFgaServiceClient {
@@ -224,7 +224,7 @@ where
 }
 
 #[cfg(feature = "auth-middle")]
-type AuthLayer = tower::util::Either<
+pub(crate) type BasicAuthLayer = tower::util::Either<
     tower::util::Either<
         tonic::service::interceptor::InterceptedService<
             Channel,
@@ -370,7 +370,10 @@ pub(crate) mod test {
 
             assert_eq!(tuples.len(), 501);
             assert_eq!(
-                HashSet::<String>::from_iter(tuples.iter().map(|t| t.key.clone().unwrap().user)),
+                tuples
+                    .iter()
+                    .map(|t| t.key.clone().unwrap().user)
+                    .collect::<HashSet<String>>(),
                 HashSet::from_iter(users)
             );
         }

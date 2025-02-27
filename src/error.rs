@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use tonic::codegen::StdError;
 
-use crate::{
-    client::{CheckRequest, ReadRequest, WriteRequest},
-    generated::ReadRequestTupleKey,
-};
+use crate::generated::ReadRequestTupleKey;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -48,20 +45,11 @@ pub enum Error {
     )]
     TooManyWrites { actual: i32, max: i32 },
     #[error("Failed to write Authorization tuples: {source}")]
-    WriteFailed {
-        write_request: WriteRequest,
-        source: tonic::Status,
-    },
+    WriteFailed { source: tonic::Status },
     #[error("Failed to read Authorization tuples: {source}")]
-    ReadFailed {
-        read_request: ReadRequest,
-        source: tonic::Status,
-    },
+    ReadFailed { source: tonic::Status },
     #[error("Authorization check failed")]
-    CheckFailed {
-        check_request: CheckRequest,
-        source: tonic::Status,
-    },
+    CheckFailed { source: tonic::Status },
 }
 
 impl Error {

@@ -1,15 +1,18 @@
 use std::{collections::HashSet, sync::Arc};
 
-use crate::client::{
-    CheckRequest, CheckRequestTupleKey, CheckResponse, ConsistencyPreference, ContextualTupleKeys,
-    OpenFgaServiceClient, ReadRequest, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey,
-    TupleKeyWithoutCondition, WriteRequest, WriteRequestDeletes, WriteRequestWrites,
-};
 use async_stream::stream;
 use futures::{pin_mut, StreamExt};
 use tonic::codegen::{Body, Bytes, StdError};
 
-use crate::error::{Error, Result};
+use crate::{
+    client::{
+        CheckRequest, CheckRequestTupleKey, ConsistencyPreference, ContextualTupleKeys,
+        OpenFgaServiceClient, ReadRequest, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey,
+        TupleKeyWithoutCondition, WriteRequest, WriteRequestDeletes, WriteRequestWrites,
+    },
+    client_ext::BasicAuthLayer,
+    error::{Error, Result},
+};
 
 const DEFAULT_MAX_TUPLES_PER_WRITE: i32 = 100;
 
@@ -22,7 +25,6 @@ const DEFAULT_MAX_TUPLES_PER_WRITE: i32 = 100;
 /// * Applies the same configured `consistency` to all requests
 /// * Ensures the number of writes and deletes does not exceed OpenFGA's limit
 /// * Uses tracing to log errors
-/// * Enriches errors with the request that caused the error
 /// * Never sends empty writes or deletes, which fails on OpenFGA
 /// * Uses [`TupleKey`] and [`TupleKeyWithoutCondition`] for reads and writes to increase ergonomics instead of [`ReadRequestTupleKey`] and [`WriteRequestTupleKey`] respectively
 /// * Provides a `read_all_pages` method to read all pages of a tuple
@@ -57,6 +59,12 @@ struct ModelClientInner {
     consistency: ConsistencyPreference,
 }
 
+/// Specialization of the [`OpenFgaClient`] that includes optional
+/// authentication with pre-shared keys (Bearer tokens) or client credentials.
+/// For more fine-granular control, construct [`OpenFgaClient`] directly
+/// with a custom [`OpenFgaServiceClient`].
+pub type BasicOpenFgaClient = OpenFgaClient<BasicAuthLayer>;
+
 impl<T> OpenFgaClient<T>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody>,
@@ -66,6 +74,7 @@ where
     T: Clone,
 {
     /// Create a new `OpenFgaModelClient` with the given `store_id` and `authorization_model_id`.
+    #[must_use]
     pub fn new(
         client: OpenFgaServiceClient<T>,
         store_id: &str,
@@ -83,6 +92,7 @@ where
     }
 
     /// Set the `max_tuples_per_write` for the client.
+    #[must_use]
     pub fn set_max_tuples_per_write(mut self, max_tuples_per_write: i32) -> Self {
         let inner = Arc::unwrap_or_clone(self.inner);
         self.inner = Arc::new(ModelClientInner {
@@ -95,6 +105,7 @@ where
     }
 
     /// Set the `consistency` for the client.
+    #[must_use]
     pub fn set_consistency(mut self, consistency: impl Into<ConsistencyPreference>) -> Self {
         let inner = Arc::unwrap_or_clone(self.inner);
         self.inner = Arc::new(ModelClientInner {
@@ -193,11 +204,8 @@ where
             .write(write_request.clone())
             .await
             .map_err(|e| {
-                let write_request_debug = format!("{:?}", write_request);
-                let error = Error::WriteFailed {
-                    write_request,
-                    source: e,
-                };
+                let write_request_debug = format!("{write_request:?}");
+                let error = Error::WriteFailed { source: e };
                 tracing::error!("{}. Request: {write_request_debug}", error);
                 error
             })
@@ -229,11 +237,8 @@ where
             .read(read_request.clone())
             .await
             .map_err(|e| {
-                let read_request_debug = format!("{:?}", read_request);
-                let error = Error::ReadFailed {
-                    read_request,
-                    source: e,
-                };
+                let read_request_debug = format!("{read_request:?}");
+                let error = Error::ReadFailed { source: e };
                 tracing::error!("{}. Request: {read_request_debug}", error);
                 error
             })
@@ -293,11 +298,8 @@ where
             .check(check_request.clone())
             .await
             .map_err(|e| {
-                let check_request_debug = format!("{:?}", check_request);
-                let error = Error::CheckFailed {
-                    check_request,
-                    source: e,
-                };
+                let check_request_debug = format!("{check_request:?}");
+                let error = Error::CheckFailed { source: e };
                 tracing::error!("{}. Request: {check_request_debug}", error);
                 error
             })?;
@@ -329,7 +331,7 @@ where
             self.delete_relations_to_object_inner(object)
                 .await
                 .inspect_err(|e| {
-                    tracing::error!("Failed to delete relations to object {object}: {e}")
+                    tracing::error!("Failed to delete relations to object {object}: {e}");
                 })?;
 
             if self.exists_relation_to(object).await? {
@@ -439,10 +441,13 @@ mod tests {
 
     #[needs_env_var(TEST_OPENFGA_CLIENT_GRPC_URL)]
     mod openfga {
-        use super::super::*;
-        use crate::client::{AuthorizationModel, Store};
-        use crate::migration::test::openfga::service_client_with_store;
         use tracing_test::traced_test;
+
+        use super::super::*;
+        use crate::{
+            client::{AuthorizationModel, Store},
+            migration::test::openfga::service_client_with_store,
+        };
 
         async fn write_custom_roles_model(
             client: &OpenFgaServiceClient<tonic::transport::Channel>,
@@ -474,7 +479,7 @@ mod tests {
             let client = get_client_with_custom_roles_model().await;
             let object = "team:team1";
 
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
 
             client
                 .write(
@@ -488,9 +493,9 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), true);
+            assert!(client.exists_relation_to(object).await.unwrap());
             client.delete_relations_to_object(object).await.unwrap();
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
         }
 
         #[tokio::test]
@@ -499,7 +504,7 @@ mod tests {
             let client = get_client_with_custom_roles_model().await;
             let object: &str = "role:admin";
 
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
 
             client
                 .write(
@@ -513,9 +518,9 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), true);
+            assert!(client.exists_relation_to(object).await.unwrap());
             client.delete_relations_to_object(object).await.unwrap();
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
         }
 
         #[tokio::test]
@@ -524,9 +529,9 @@ mod tests {
             let client = get_client_with_custom_roles_model().await;
             let object = "team:team1";
 
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
             client.delete_relations_to_object(object).await.unwrap();
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
         }
 
         #[tokio::test]
@@ -535,7 +540,7 @@ mod tests {
             let client = get_client_with_custom_roles_model().await;
             let object = "org:org1";
 
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
+            assert!(!client.exists_relation_to(object).await.unwrap());
 
             for i in 0..502 {
                 client
@@ -575,24 +580,21 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), true);
-            assert_eq!(client.exists_relation_to(object_2).await.unwrap(), true);
+            assert!(client.exists_relation_to(object).await.unwrap());
+            assert!(client.exists_relation_to(object_2).await.unwrap());
 
             client.delete_relations_to_object(object).await.unwrap();
 
-            assert_eq!(client.exists_relation_to(object).await.unwrap(), false);
-            assert_eq!(client.exists_relation_to(object_2).await.unwrap(), true);
-            assert_eq!(
-                client
-                    .check_simple(TupleKeyWithoutCondition {
-                        user: "user:user1".to_string(),
-                        relation: "role_assigner".to_string(),
-                        object: object_2.to_string(),
-                    })
-                    .await
-                    .unwrap(),
-                true
-            );
+            assert!(!client.exists_relation_to(object).await.unwrap());
+            assert!(client.exists_relation_to(object_2).await.unwrap());
+            assert!(client
+                .check_simple(TupleKeyWithoutCondition {
+                    user: "user:user1".to_string(),
+                    relation: "role_assigner".to_string(),
+                    object: object_2.to_string(),
+                })
+                .await
+                .unwrap());
         }
     }
 }
