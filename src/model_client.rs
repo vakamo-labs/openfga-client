@@ -224,7 +224,7 @@ where
         page_size: i32,
         tuple_key: impl Into<ReadRequestTupleKey>,
         continuation_token: impl Into<Option<String>>,
-    ) -> Result<ReadResponse> {
+    ) -> Result<tonic::Response<ReadResponse>> {
         let read_request = ReadRequest {
             store_id: self.store_id().to_string(),
             page_size: Some(page_size),
@@ -242,7 +242,6 @@ where
                 tracing::error!("{}. Request: {read_request_debug}", error);
                 error
             })
-            .map(tonic::Response::into_inner)
     }
 
     /// Read all tuples, paginating through all pages.
@@ -369,6 +368,7 @@ where
             continuation_token,
         )
         .await
+        .map(tonic::Response::into_inner)
     }
 
     /// # Errors
