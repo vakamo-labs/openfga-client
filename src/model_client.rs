@@ -155,7 +155,7 @@ where
     ///
     /// # Errors
     /// * [`Error::TooManyWrites`] if the number of writes and deletes exceeds `max_tuples_per_write`
-    /// * [`Error::WriteFailed`] if the write request fails
+    /// * [`Error::RequestFailed`] if the write request fails
     ///
     pub async fn write(
         &self,
@@ -205,7 +205,7 @@ where
             .await
             .map_err(|e| {
                 let write_request_debug = format!("{write_request:?}");
-                let error = Error::WriteFailed { source: e };
+                let error = Error::RequestFailed(e);
                 tracing::error!("{}. Request: {write_request_debug}", error);
                 error
             })
@@ -218,7 +218,7 @@ where
     /// * Enriches the error with the `read_request` that caused the error
     ///
     /// # Errors
-    /// * [`Error::ReadFailed`] if the read request fails
+    /// * [`Error::RequestFailed`] if the read request fails
     pub async fn read(
         &self,
         page_size: i32,
@@ -238,7 +238,7 @@ where
             .await
             .map_err(|e| {
                 let read_request_debug = format!("{read_request:?}");
-                let error = Error::ReadFailed { source: e };
+                let error = Error::RequestFailed(e);
                 tracing::error!("{}. Request: {read_request_debug}", error);
                 error
             })
@@ -269,7 +269,7 @@ where
     /// Returns `true` if the check is allowed, `false` otherwise.
     ///
     /// # Errors
-    /// * [`Error::CheckFailed`] if the check request fails
+    /// * [`Error::RequestFailed`] if the check request fails
     ///
     pub async fn check(
         &self,
@@ -299,7 +299,7 @@ where
             .await
             .map_err(|e| {
                 let check_request_debug = format!("{check_request:?}");
-                let error = Error::CheckFailed { source: e };
+                let error = Error::RequestFailed(e);
                 tracing::error!("{}. Request: {check_request_debug}", error);
                 error
             })?;

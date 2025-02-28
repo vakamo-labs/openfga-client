@@ -12,7 +12,7 @@ pub enum Error {
     AmbiguousStoreName(String),
     #[error("Request to OpenFGA failed with status: {0}")]
     RequestFailed(tonic::Status),
-    #[error("Too many pages returned for tuple {tuple}. Max pages: {max_pages}")]
+    #[error("Too many pages returned for read request {tuple}. Max pages: {max_pages}")]
     TooManyPages {
         max_pages: u32,
         tuple: ReadRequestTupleKey,
@@ -44,12 +44,6 @@ pub enum Error {
         "Too many writes and deletes in single OpenFGA transaction (actual) {actual} > {max} (max)"
     )]
     TooManyWrites { actual: i32, max: i32 },
-    #[error("Failed to write Authorization tuples: {source}")]
-    WriteFailed { source: tonic::Status },
-    #[error("Failed to read Authorization tuples: {source}")]
-    ReadFailed { source: tonic::Status },
-    #[error("Authorization check failed")]
-    CheckFailed { source: tonic::Status },
 }
 
 impl Error {
