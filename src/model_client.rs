@@ -7,8 +7,9 @@ use tonic::codegen::{Body, Bytes, StdError};
 use crate::{
     client::{
         CheckRequest, CheckRequestTupleKey, ConsistencyPreference, ContextualTupleKeys,
-        OpenFgaServiceClient, ReadRequest, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey,
-        TupleKeyWithoutCondition, WriteRequest, WriteRequestDeletes, WriteRequestWrites,
+        ListObjectsRequest, ListObjectsResponse, OpenFgaServiceClient, ReadRequest,
+        ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition, WriteRequest,
+        WriteRequestDeletes, WriteRequestWrites,
     },
     client_ext::BasicAuthLayer,
     error::{Error, Result},
@@ -211,9 +212,10 @@ where
             .await
             .map_err(|e| {
                 let write_request_debug = format!("{write_request:?}");
-                let error = Error::RequestFailed(e);
-                tracing::error!("{}. Request: {write_request_debug}", error);
-                error
+                tracing::error!(
+                    "Write request failed with status {e}. Request: {write_request_debug}"
+                );
+                Error::RequestFailed(e)
             })
             .map(|_| ())
     }
@@ -244,9 +246,10 @@ where
             .await
             .map_err(|e| {
                 let read_request_debug = format!("{read_request:?}");
-                let error = Error::RequestFailed(e);
-                tracing::error!("{}. Request: {read_request_debug}", error);
-                error
+                tracing::error!(
+                    "Read request failed with status {e}. Request: {read_request_debug}"
+                );
+                Error::RequestFailed(e)
             })
     }
 
@@ -304,9 +307,10 @@ where
             .await
             .map_err(|e| {
                 let check_request_debug = format!("{check_request:?}");
-                let error = Error::RequestFailed(e);
-                tracing::error!("{}. Request: {check_request_debug}", error);
-                error
+                tracing::error!(
+                    "Check request failed with status {e}. Request: {check_request_debug}"
+                );
+                Error::RequestFailed(e)
             })?;
         Ok(response.get_ref().allowed)
     }
@@ -317,6 +321,43 @@ where
     /// Check the [`Self::check`] method for possible errors.
     pub async fn check_simple(&self, tuple_key: impl Into<CheckRequestTupleKey>) -> Result<bool> {
         self.check(tuple_key, None, None, false).await
+    }
+
+    /// List all objects of the given type that the user has a relation with.
+    ///
+    /// # Errors
+    /// * [`Error::RequestFailed`] if the list-objects request fails
+    pub async fn list_objects(
+        &self,
+        r#type: impl Into<String>,
+        relation: impl Into<String>,
+        user: impl Into<String>,
+        contextual_tuples: impl Into<Option<Vec<TupleKey>>>,
+        context: impl Into<Option<prost_wkt_types::Struct>>,
+    ) -> Result<tonic::Response<ListObjectsResponse>> {
+        let request = ListObjectsRequest {
+            r#type: r#type.into(),
+            relation: relation.into(),
+            user: user.into(),
+            authorization_model_id: self.authorization_model_id().to_string(),
+            store_id: self.store_id().to_string(),
+            consistency: self.consistency().into(),
+            contextual_tuples: contextual_tuples
+                .into()
+                .map(|tuple_keys| ContextualTupleKeys { tuple_keys }),
+            context: context.into(),
+        };
+
+        self.client
+            .clone()
+            .list_objects(request.clone())
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "List-Objects request failed with status {e}. Request: {request:?}"
+                );
+                Error::RequestFailed(e)
+            })
     }
 
     /// Delete all relations that other entities have to the given `object`, that
