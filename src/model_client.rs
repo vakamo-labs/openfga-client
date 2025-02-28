@@ -22,11 +22,12 @@ const DEFAULT_MAX_TUPLES_PER_WRITE: i32 = 100;
 /// Why you should use this wrapper:
 ///
 /// * Handles the `store_id` and `authorization_model_id` for you - you don't need to pass them in every request
+/// * For finer control, provides access to the underlying [`Self::client`] to make requests directly
 /// * Applies the same configured `consistency` to all requests
 /// * Ensures the number of writes and deletes does not exceed OpenFGA's limit
 /// * Uses tracing to log errors
 /// * Never sends empty writes or deletes, which fails on OpenFGA
-/// * Uses [`TupleKey`] and [`TupleKeyWithoutCondition`] for reads and writes to increase ergonomics instead of [`ReadRequestTupleKey`] and [`WriteRequestTupleKey`] respectively
+/// * Uses `impl Into<ReadRequestTupleKey>` arguments instead of very specific types like [`ReadRequestTupleKey`]
 /// * Provides a `read_all_pages` method to read all pages of a tuple
 /// * Most methods don't require mutable access to the client. Cloning tonics client is cheap.
 ///
@@ -130,6 +131,11 @@ where
     /// Get the `max_tuples_per_write` of the client.
     pub fn max_tuples_per_write(&self) -> i32 {
         self.inner.max_tuples_per_write
+    }
+
+    /// Get the underlying `OpenFgaServiceClient`.
+    pub fn client(&self) -> OpenFgaServiceClient<T> {
+        self.client.clone()
     }
 
     /// Get the `consistency` of the client.
@@ -253,7 +259,7 @@ where
     ///
     pub async fn read_all_pages(
         &self,
-        tuple: TupleKeyWithoutCondition,
+        tuple: impl Into<ReadRequestTupleKey>,
         page_size: i32,
         max_pages: u32,
     ) -> Result<Vec<Tuple>> {
