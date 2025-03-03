@@ -1,4 +1,4 @@
-# OpenFGA Rust Client
+# OpenFGA Rust Client SDK
 
 [![Crates.io](https://img.shields.io/crates/v/openfga-client)](https://crates.io/crates/openfga-client)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
