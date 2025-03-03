@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/vakamo-labs/openfga-client/compare/v0.1.2...v0.2.0) - 2025-03-03
+
+### Added
+
+- Migration manager, extended client ([#5](https://github.com/vakamo-labs/openfga-client/pull/5))
+
+### Other
+
+- *(docs)* Fix typo
+- *(docs)* Include SDK
+
 ## [0.1.2](https://github.com/vakamo-labs/openfga-client/compare/v0.1.1...v0.1.2) - 2025-02-27
 
 ### Fixed
