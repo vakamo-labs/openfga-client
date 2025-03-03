@@ -30,10 +30,10 @@ impl BasicOpenFgaServiceClient {
     ///
     /// # Errors
     /// * [`Error::InvalidEndpoint`] if the endpoint is not a valid URL.
-    pub fn new_unauthenticated(endpoint: &str) -> Result<Self> {
+    pub fn new_unauthenticated(endpoint: impl Into<url::Url>) -> Result<Self> {
         let either_or_option: EitherOrOption = None;
         let auth_layer = tower::util::option_layer(either_or_option);
-        let endpoint = get_tonic_endpoint_logged(endpoint)?;
+        let endpoint = get_tonic_endpoint_logged(endpoint.into())?;
         let c = ServiceBuilder::new()
             .layer(auth_layer)
             .service(endpoint.connect_lazy());
@@ -45,7 +45,7 @@ impl BasicOpenFgaServiceClient {
     /// # Errors
     /// * [`Error::InvalidEndpoint`] if the endpoint is not a valid URL.
     /// * [`Error::InvalidToken`] if the token is not valid ASCII.
-    pub fn new_with_basic_auth(endpoint: &str, token: &str) -> Result<Self> {
+    pub fn new_with_basic_auth(endpoint: impl Into<url::Url>, token: &str) -> Result<Self> {
         let either_or_option: EitherOrOption =
             Some(tower::util::Either::Right(tonic::service::interceptor(
                 middle::BearerTokenAuthorizer::new(token).map_err(|e| {
@@ -56,7 +56,7 @@ impl BasicOpenFgaServiceClient {
                 })?,
             )));
         let auth_layer = tower::util::option_layer(either_or_option);
-        let endpoint = get_tonic_endpoint_logged(endpoint)?;
+        let endpoint = get_tonic_endpoint_logged(endpoint.into())?;
         let c = ServiceBuilder::new()
             .layer(auth_layer)
             .service(endpoint.connect_lazy());
@@ -69,7 +69,7 @@ impl BasicOpenFgaServiceClient {
     /// * [`Error::InvalidEndpoint`] if the endpoint is not a valid URL.
     /// * [`Error::CredentialRefreshError`] if the client credentials could not be exchanged for a token.
     pub async fn new_with_client_credentials(
-        endpoint: &str,
+        endpoint: impl Into<url::Url>,
         client_id: &str,
         client_secret: &str,
         token_endpoint: impl Into<url::Url>,
@@ -96,7 +96,7 @@ impl BasicOpenFgaServiceClient {
                 })?,
             )));
         let auth_layer = tower::util::option_layer(either_or_option);
-        let endpoint = get_tonic_endpoint_logged(endpoint)?;
+        let endpoint = get_tonic_endpoint_logged(endpoint.into())?;
         let c = ServiceBuilder::new()
             .layer(auth_layer)
             .service(endpoint.connect_lazy());
@@ -252,7 +252,7 @@ type EitherOrOption = Option<
 >;
 
 #[cfg(feature = "auth-middle")]
-fn get_tonic_endpoint_logged(endpoint: &str) -> Result<Endpoint> {
+fn get_tonic_endpoint_logged(endpoint: url::Url) -> Result<Endpoint> {
     Endpoint::new(endpoint.to_string()).map_err(|e| {
         tracing::error!("Could not construct OpenFGA client. Invalid endpoint `{endpoint}`: {e}");
         Error::InvalidEndpoint(endpoint.to_string())
@@ -279,7 +279,7 @@ pub(crate) mod test {
 
         fn get_basic_client() -> BasicOpenFgaServiceClient {
             let endpoint = std::env::var("TEST_OPENFGA_CLIENT_GRPC_URL").unwrap();
-            BasicOpenFgaServiceClient::new_unauthenticated(&endpoint)
+            BasicOpenFgaServiceClient::new_unauthenticated(url::Url::parse(&endpoint).unwrap())
                 .expect("Client can be created")
         }
 
