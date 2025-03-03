@@ -448,8 +448,7 @@ where
     /// Iteration is stopped when no more tuples are returned from OpenFGA.
     ///
     /// # Errors
-    /// * [`Error::ReadFailed`] if a read request fails
-    /// * [`Error::WriteFailed`] if a delete request fails
+    /// * [`Error::RequestFailed`] if a read or delete request fails
     ///
     pub async fn delete_relations_to_object(&self, object: &str) -> Result<()> {
         loop {
@@ -472,7 +471,7 @@ where
     /// This does not check if the object is used as a user in relations to other objects.
     ///
     /// # Errors
-    /// * [`Error::ReadFailed`] if the read request fails
+    /// * [`Error::RequestFailed`] if the read request fails
     pub async fn exists_relation_to(&self, object: &str) -> Result<bool> {
         let tuples = self.read_relations_to_object(object, None, 1).await?;
         Ok(!tuples.tuples.is_empty())
@@ -498,8 +497,7 @@ where
     }
 
     /// # Errors
-    /// * [`Error::ReadFailed`] if a read request fails
-    /// * [`Error::WriteFailed`] if a delete request fails
+    /// * [`Error::RequestFailed`] if a read or delete request fails
     ///
     async fn delete_relations_to_object_inner(&self, object: &str) -> Result<()> {
         let read_stream = stream! {
