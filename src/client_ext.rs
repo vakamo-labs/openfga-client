@@ -73,14 +73,22 @@ impl BasicOpenFgaServiceClient {
         client_id: &str,
         client_secret: &str,
         token_endpoint: impl Into<url::Url>,
+        scopes: &[&str],
     ) -> Result<Self> {
         let either_or_option: EitherOrOption =
             Some(tower::util::Either::Left(tonic::service::interceptor(
-                middle::BasicClientCredentialAuthorizer::basic_builder(
+                {
+                let builder = middle::BasicClientCredentialAuthorizer::basic_builder(
                     client_id,
                     client_secret,
                     token_endpoint.into(),
-                )
+                );
+                if scopes.len() > 0 {
+                    builder.add_scopes(scopes)
+                } else {
+                    builder
+                }
+            }
                 .build()
                 .await.map_err(|e| {
                     tracing::error!("Could not construct OpenFGA client. Failed to fetch or refresh Client Credentials: {e}");
