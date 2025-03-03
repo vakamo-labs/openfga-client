@@ -32,8 +32,7 @@ struct VersionedAuthorizationModel {
     version: AuthorizationModelVersion,
 }
 
-/// Manages [`AuthorizationModel`]s in OpenFGA by storing a mapping of their version in the
-/// application to the ID of the model in OpenFGA in a tuple in OpenFGA.
+/// Manages [`AuthorizationModel`]s in OpenFGA.
 ///
 /// Authorization models in OpenFGA don't receive a unique name. Instead,
 /// they receive a random id on creation. If we don't store this ID, we can't
@@ -42,10 +41,12 @@ struct VersionedAuthorizationModel {
 /// This `ModelManager` stores the mapping of [`AuthorizationModelVersion`]
 /// to the ID of the model in OpenFGA directly inside OpenFGA.
 /// This way can query OpenFGA to determine if a model with a certain version
-/// has already been applied.
+/// has already exists.
 ///
-/// The [`TupleModelManager`] will extend provided [`AuthorizationModel`]s with the following
-/// OpenFGA types:
+/// When running [`TupleModelManager::migrate()`], the manager only applies models and their migrations
+/// if they don't already exist in OpenFGA.
+///
+/// To store the mapping of model versions to OpenFGA IDs, the following needs to part of your Authorization Model:
 /// ```text
 /// type auth_model_id
 /// type model_version
