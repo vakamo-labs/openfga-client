@@ -91,7 +91,7 @@ jobs:
         env:
           RUSTFLAGS: --cfg docsrs ${{ matrix.run.RUSTFLAGS }}
           RUSTDOCFLAGS: --cfg docsrs -Dwarnings ${{ matrix.run.RUSTDOCFLAGS }}
-        
+
   test:
     name: test
     runs-on: ubuntu-latest

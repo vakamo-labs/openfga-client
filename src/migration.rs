@@ -32,8 +32,7 @@ struct VersionedAuthorizationModel {
     version: AuthorizationModelVersion,
 }
 
-/// Manages [`AuthorizationModel`]s in OpenFGA by storing a mapping of their version in the
-/// application to the ID of the model in OpenFGA in a tuple in OpenFGA.
+/// Manages [`AuthorizationModel`]s in OpenFGA.
 ///
 /// Authorization models in OpenFGA don't receive a unique name. Instead,
 /// they receive a random id on creation. If we don't store this ID, we can't
@@ -42,10 +41,12 @@ struct VersionedAuthorizationModel {
 /// This `ModelManager` stores the mapping of [`AuthorizationModelVersion`]
 /// to the ID of the model in OpenFGA directly inside OpenFGA.
 /// This way can query OpenFGA to determine if a model with a certain version
-/// has already been applied.
+/// has already exists.
 ///
-/// The [`TupleModelManager`] will extend provided [`AuthorizationModel`]s with the following
-/// OpenFGA types:
+/// When running [`TupleModelManager::migrate()`], the manager only applies models and their migrations
+/// if they don't already exist in OpenFGA.
+///
+/// To store the mapping of model versions to OpenFGA IDs, the following needs to part of your Authorization Model:
 /// ```text
 /// type auth_model_id
 /// type model_version
@@ -98,11 +99,6 @@ where
     Arc::new(move |v| Box::pin(f(v)))
 }
 
-// type StaticMigrationFn =
-//     fn(
-//         OpenFgaServiceClient<tonic::transport::Channel>,
-//     ) -> Pin<Box<dyn Future<Output = std::result::Result<(), StdError>> + Send>>;
-
 impl<T> TupleModelManager<T>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody>,
@@ -121,11 +117,11 @@ where
     /// the model manager will not be able to find the model again.
     /// Use different model prefixes if models for different purposes are stored in the
     /// same OpenFGA store.
-    pub fn new(client: OpenFgaServiceClient<T>, store_name: String, model_prefix: String) -> Self {
+    pub fn new(client: OpenFgaServiceClient<T>, store_name: &str, model_prefix: &str) -> Self {
         TupleModelManager {
             client,
-            model_prefix,
-            store_name,
+            model_prefix: model_prefix.to_string(),
+            store_name: store_name.to_string(),
             migrations: HashMap::new(),
         }
     }
@@ -530,7 +526,7 @@ impl<T> std::fmt::Debug for Migration<T> {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use std::sync::Mutex;
 
     use needs_env_var::needs_env_var;
@@ -613,7 +609,7 @@ mod test {
     }
 
     #[needs_env_var(TEST_OPENFGA_CLIENT_GRPC_URL)]
-    mod openfga {
+    pub(crate) mod openfga {
         use std::{str::FromStr, sync::Mutex};
 
         use pretty_assertions::assert_eq;
@@ -621,7 +617,8 @@ mod test {
         use super::*;
         use crate::client::{OpenFgaServiceClient, ReadAuthorizationModelRequest};
 
-        async fn get_client() -> OpenFgaServiceClient<tonic::transport::Channel> {
+        pub(crate) async fn get_service_client() -> OpenFgaServiceClient<tonic::transport::Channel>
+        {
             let endpoint = std::env::var("TEST_OPENFGA_CLIENT_GRPC_URL").unwrap();
             let endpoint = tonic::transport::Endpoint::from_str(&endpoint).unwrap();
             OpenFgaServiceClient::connect(endpoint)
@@ -629,8 +626,9 @@ mod test {
                 .expect("Client can be created")
         }
 
-        async fn client_with_store() -> (OpenFgaServiceClient<tonic::transport::Channel>, Store) {
-            let mut client = get_client().await;
+        pub(crate) async fn service_client_with_store(
+        ) -> (OpenFgaServiceClient<tonic::transport::Channel>, Store) {
+            let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let store = client.get_or_create_store(&store_name).await.unwrap();
             (client, store)
@@ -638,9 +636,8 @@ mod test {
 
         #[tokio::test]
         async fn test_get_existing_versions_nonexistent_store() {
-            let client = get_client().await;
-            let mut manager =
-                TupleModelManager::new(client, "nonexistent".to_string(), "test".to_string());
+            let client = get_service_client().await;
+            let mut manager = TupleModelManager::new(client, "nonexistent", "test");
 
             let versions = manager.get_existing_versions().await.unwrap();
             assert!(versions.is_empty());
@@ -648,25 +645,21 @@ mod test {
 
         #[tokio::test]
         async fn test_get_existing_versions_nonexistent_auth_model() {
-            let mut client = get_client().await;
+            let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let _store = client.get_or_create_store(&store_name).await.unwrap();
-            let mut manager = TupleModelManager::new(client, store_name, "test".to_string());
+            let mut manager = TupleModelManager::new(client, &store_name, "test");
             let versions = manager.get_existing_versions().await.unwrap();
             assert!(versions.is_empty());
         }
 
         #[tokio::test]
         async fn test_get_authorization_model_id() {
-            let (mut client, store) = client_with_store().await;
+            let (mut client, store) = service_client_with_store().await;
             let model_prefix = "test";
             let version = AuthorizationModelVersion::new(1, 0);
 
-            let mut manager = TupleModelManager::new(
-                client.clone(),
-                store.name.clone(),
-                model_prefix.to_string(),
-            );
+            let mut manager = TupleModelManager::new(client.clone(), &store.name, model_prefix);
 
             // Non-existent model
             assert_eq!(
@@ -725,7 +718,7 @@ mod test {
         #[tokio::test]
         async fn test_model_manager() {
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
-            let mut client = get_client().await;
+            let mut client = get_service_client().await;
 
             let model_1_0: AuthorizationModel =
                 serde_json::from_str(include_str!("../tests/model-manager/v1.0/schema.json"))
@@ -735,20 +728,16 @@ mod test {
             let execution_counter_1 = Arc::new(Mutex::new(0));
 
             let execution_counter_clone = execution_counter_1.clone();
-            let mut manager = TupleModelManager::new(
-                client.clone(),
-                store_name.clone(),
-                "test-model".to_string(),
-            )
-            .add_model(
-                model_1_0.clone(),
-                version_1_0,
-                Some(move |client| {
-                    let counter = execution_counter_clone.clone();
-                    async move { v1_pre_migration_fn(client, counter).await }
-                }),
-                None::<MigrationFn<_>>,
-            );
+            let mut manager = TupleModelManager::new(client.clone(), &store_name, "test-model")
+                .add_model(
+                    model_1_0.clone(),
+                    version_1_0,
+                    Some(move |client| {
+                        let counter = execution_counter_clone.clone();
+                        async move { v1_pre_migration_fn(client, counter).await }
+                    }),
+                    None::<MigrationFn<_>>,
+                );
             manager.migrate().await.unwrap();
             // Check hook was called once
             assert_eq!(*execution_counter_1.lock().unwrap(), 1);
@@ -834,6 +823,7 @@ mod test {
         }
     }
 
+    #[allow(clippy::unused_async)]
     async fn v1_pre_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
         counter_mutex: Arc<Mutex<i32>>,
@@ -851,6 +841,7 @@ mod test {
         Ok(())
     }
 
+    #[allow(clippy::unused_async)]
     async fn v2_post_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
         counter_mutex: Arc<Mutex<i32>>,

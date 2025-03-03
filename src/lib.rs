@@ -16,10 +16,10 @@
 //!
 //! ## Features
 //!
-//! * No dependency on `protoc` - Rust files are pre-generated.
 //! * Type-safe client for OpenFGA (gRPC) build on `tonic`
 //! * (JSON) Serialization and deserialization for Authorization Models in addition go protobuf Messages
-//! * Optional Authorization Model management with Migration hooks if tuples need to be re-written. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without blindly re-writing of Authorization Models on startup!
+//! * Uses `vendored-protoc` for well-known types - Rust files are pre-generated.
+//! * Optional Authorization Model management with Migration hooks. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without re-writing of Authorization Models on startup.
 //! * Optional Authentication (Bearer or Client Credentials) via the [Middle Crate](https://crates.io/crates/middle). (Feature: `auth-middle`)
 //! * Convenience functions like `read_all_tuples` (handles pagination), `get_store_by_name` and more.
 //!
@@ -32,8 +32,8 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let endpoint = "http://localhost:8080";
-//!     let client = OpenFgaServiceClient::connect(endpoint).await?;
+//!     let endpoint = "http://localhost:8081";
+//!     let service_client = OpenFgaServiceClient::connect(endpoint).await?;
 //!
 //!     // Use the client to interact with OpenFGA
 //!     Ok(())
@@ -42,12 +42,12 @@
 //!
 //! ## Bearer Token Authentication (API-Key)
 //! ```no_run
-//! use openfga_client::client::BasicOpenFgaServiceClient;
+//! use openfga_client::{client::BasicOpenFgaServiceClient, url};
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let endpoint = "http://localhost:8080";
+//!     let endpoint = url::Url::parse("http://localhost:8081")?;
 //!     let token = "your-bearer-token";
-//!     let client = BasicOpenFgaServiceClient::new_with_basic_auth(endpoint, token)?;
+//!     let service_client = BasicOpenFgaServiceClient::new_with_basic_auth(endpoint, token)?;
 //!
 //!     // Use the client to interact with OpenFGA
 //!     Ok(())
@@ -61,13 +61,102 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let endpoint = "http://localhost:8080";
+//!     let endpoint = Url::parse("http://localhost:8081")?;
 //!     let client_id = "your-client-id";
 //!     let client_secret = "your-client-secret";
-//!     let token_endpoint = Url::parse("http://localhost:8080/token")?;
-//!     let client = BasicOpenFgaServiceClient::new_with_client_credentials(endpoint, client_id, client_secret, &token_endpoint).await?;
+//!     let token_endpoint = Url::parse("http://localhost:8081/token")?;
+//!     let scopes = vec!["scope1", "scope2"];
+//!     let service_client = BasicOpenFgaServiceClient::new_with_client_credentials(endpoint, client_id, client_secret, token_endpoint, &scopes).await?;
 //!
 //!     // Use the client to interact with OpenFGA
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Authorization Model Management and Migration
+//!
+//! For more details please check the [`TupleModelManager`](`migration::TupleModelManager`).
+//!
+//! Requires the following as part of the Authorization model:
+//! ```text
+//! type auth_model_id
+//! type model_version
+//!   relations
+//!     define openfga_id: [auth_model_id]
+//!     define exists: [auth_model_id:*]
+//! ```
+//!
+//! Usage:
+//! ```no_run
+//! use openfga_client::client::{OpenFgaServiceClient, TupleKeyWithoutCondition};
+//! use openfga_client::migration::{AuthorizationModelVersion, MigrationFn, TupleModelManager};
+//! use openfga_client::tonic::codegen::StdError;
+//!
+//! #[allow(clippy::unused_async)]
+//! async fn v1_1_migration(
+//!     client: OpenFgaServiceClient<tonic::transport::Channel>,
+//! ) -> std::result::Result<(), StdError> {
+//!     let _ = client;
+//!     Ok(())
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let endpoint = "http://localhost:8081";
+//!     let mut service_client = OpenFgaServiceClient::connect(endpoint).await?;
+//!
+//!     let store_name = "my-store";
+//!     let model_prefix = "my-model";
+//!
+//!     let mut manager = TupleModelManager::new(service_client.clone(), store_name, model_prefix)
+//!         // Migrations are executed in order for models that have not been previously migrated.
+//!         // First model - version 1.0
+//!         .add_model(
+//!             serde_json::from_str(include_str!("../tests/model-manager/v1.0/schema.json"))?,
+//!             AuthorizationModelVersion::new(1, 0),
+//!             // For major version upgrades, this is where tuple migrations go.
+//!             None::<MigrationFn<_>>,
+//!             None::<MigrationFn<_>>,
+//!         )
+//!         // Second model - version 1.1
+//!         .add_model(
+//!             serde_json::from_str(include_str!("../tests/model-manager/v1.1/schema.json"))?,
+//!             AuthorizationModelVersion::new(1, 1),
+//!             // For major version upgrades, this is where tuple migrations go.
+//!             Some(v1_1_migration),
+//!             None::<MigrationFn<_>>,
+//!         );
+//!
+//!     // Perform the migration if necessary
+//!     manager.migrate().await?;
+//!
+//!     let store_id = service_client
+//!         .get_store_by_name(store_name)
+//!         .await?
+//!         .expect("Store found")
+//!         .id;
+//!     let authorization_model_id = manager
+//!         .get_authorization_model_id(AuthorizationModelVersion::new(1, 1))
+//!         .await?
+//!         .expect("Authorization model found");
+//!     let client = service_client.into_client(&store_id, &authorization_model_id);
+//!
+//!     // Use the client.
+//!     // `store_id` and `authorization_model_id` are stored in the client and attached to all requests.
+//!     let page_size = 100;
+//!     let continuation_token = None;
+//!     let _tuples = client
+//!         .read(
+//!             page_size,
+//!             TupleKeyWithoutCondition {
+//!                 user: "user:peter".to_string(),
+//!                 relation: "owner".to_string(),
+//!                 object: "organization:my-org".to_string(),
+//!             },
+//!             continuation_token,
+//!         )
+//!         .await?;
+//!
 //!     Ok(())
 //! }
 //! ```
@@ -79,12 +168,16 @@
 //! Contributions are welcome! Please open an issue or submit a pull request on GitHub.
 
 pub use prost_types;
+pub use prost_wkt_types;
 pub use tonic;
+pub mod display;
 pub mod error;
 pub mod migration;
+pub use url;
 
 mod client_ext;
 mod conversions;
+mod model_client;
 
 mod generated {
     #![allow(clippy::all)]
@@ -94,11 +187,18 @@ mod generated {
 }
 
 pub mod client {
+    //! Contains clients to connect to OpenFGA:
+    //!
+    //! * [`OpenFgaServiceClient`] is the generated client that allows full control over all parameters.
+    //! * [`OpenFgaClient`] is a wrapper around the generated client, that provides a more convenient interface and adds `store_id`, `authorization_model_id` and `consistency` to all requests.
+    //!
     pub use open_fga_service_client::OpenFgaServiceClient;
 
     #[cfg(feature = "auth-middle")]
-    pub use super::client_ext::BasicOpenFgaServiceClient;
-    pub use super::generated::*;
+    pub use super::client_ext::{BasicAuthLayer, BasicOpenFgaServiceClient};
+    #[cfg(feature = "auth-middle")]
+    pub use super::model_client::BasicOpenFgaClient;
+    pub use super::{generated::*, model_client::OpenFgaClient};
 }
 
 #[cfg(test)]

@@ -10,9 +10,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("Multiple stores with the name `{0}` found")]
     AmbiguousStoreName(String),
-    #[error("Request to OpenFGA failed")]
+    #[error("Request to OpenFGA failed with status: {0}")]
     RequestFailed(tonic::Status),
-    #[error("Too many pages")]
+    #[error("Too many pages returned for read request {tuple}. Max pages: {max_pages}")]
     TooManyPages {
         max_pages: u32,
         tuple: ReadRequestTupleKey,
@@ -40,6 +40,10 @@ pub enum Error {
         model_prefix: String,
         version: String,
     },
+    #[error(
+        "Too many writes and deletes in single OpenFGA transaction (actual) {actual} > {max} (max)"
+    )]
+    TooManyWrites { actual: i32, max: i32 },
 }
 
 impl Error {
