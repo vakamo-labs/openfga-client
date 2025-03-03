@@ -8,10 +8,10 @@ OpenFGA Rust Client is a type-safe gRPC client for OpenFGA with optional Authori
 
 # Features
 
-* No dependency on `protoc` - Rust files are pre-generated.
 * Type-safe client for OpenFGA (gRPC) build on `tonic`
 * (JSON) Serialization and deserialization for Authorization Models in addition go protobuf Messages
-* Optional Authorization Model management with Migration hooks if tuples need to be re-written. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without blindly re-writing of Authorization Models on startup!
+* Uses `vendored-protoc` for well-known types - Rust files are pre-generated.
+* Optional Authorization Model management with Migration hooks. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without re-writing of Authorization Models on startup.
 * Optional Authentication (Bearer or Client Credentials) via the [Middle Crate](https://crates.io/crates/middle). (Feature: `auth-middle`)
 * Convenience functions like `read_all_tuples` (handles pagination), `get_store_by_name` and more.
 
@@ -21,12 +21,10 @@ OpenFGA Rust Client is a type-safe gRPC client for OpenFGA with optional Authori
 ```rust
 use openfga_client::client::OpenFgaServiceClient;
 use tonic::transport::Channel;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let endpoint = "http://localhost:8080";
-    let client = OpenFgaServiceClient::connect(endpoint).await?;
-
+    let endpoint = "http://localhost:8081";
+    let service_client = OpenFgaServiceClient::connect(endpoint).await?;
     // Use the client to interact with OpenFGA
     Ok(())
 }
@@ -34,13 +32,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Bearer Token Authentication (API-Key)
 ```rust
-use openfga_client::client::BasicOpenFgaServiceClient;
-
+use openfga_client::{client::BasicOpenFgaServiceClient, url};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let endpoint = "http://localhost:8080";
+    let endpoint = url::Url::parse("http://localhost:8081")?;
     let token = "your-bearer-token";
-    let client = BasicOpenFgaServiceClient::new_with_basic_auth(endpoint, token)?;
-
+    let service_client = BasicOpenFgaServiceClient::new_with_basic_auth(endpoint, token)?;
     // Use the client to interact with OpenFGA
     Ok(())
 }
@@ -50,15 +46,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use openfga_client::client::BasicOpenFgaServiceClient;
 use url::Url;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let endpoint = "http://localhost:8080";
+    let endpoint = Url::parse("http://localhost:8081")?;
     let client_id = "your-client-id";
     let client_secret = "your-client-secret";
-    let token_endpoint = Url::parse("http://localhost:8080/token")?;
-    let client = BasicOpenFgaServiceClient::new_with_client_credentials(endpoint, client_id, client_secret, &token_endpoint).await?;
-
+    let token_endpoint = Url::parse("http://localhost:8081/token")?;
+    let scopes = vec!["scope1", "scope2"];
+    let service_client = BasicOpenFgaServiceClient::new_with_client_credentials(endpoint, client_id, client_secret, token_endpoint, &scopes).await?;
     // Use the client to interact with OpenFGA
     Ok(())
 }

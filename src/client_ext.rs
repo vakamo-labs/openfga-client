@@ -9,7 +9,7 @@ use tonic::{
 use tower::{util::Either, ServiceBuilder};
 
 use crate::{
-    client::OpenFgaServiceClient,
+    client::{OpenFgaClient, OpenFgaServiceClient},
     error::{Error, Result},
     generated::{
         ConsistencyPreference, CreateStoreRequest, ListStoresRequest, ReadRequest,
@@ -33,7 +33,7 @@ impl BasicOpenFgaServiceClient {
     pub fn new_unauthenticated(endpoint: impl Into<url::Url>) -> Result<Self> {
         let either_or_option: EitherOrOption = None;
         let auth_layer = tower::util::option_layer(either_or_option);
-        let endpoint = get_tonic_endpoint_logged(endpoint.into())?;
+        let endpoint = get_tonic_endpoint_logged(&endpoint.into())?;
         let c = ServiceBuilder::new()
             .layer(auth_layer)
             .service(endpoint.connect_lazy());
@@ -56,7 +56,7 @@ impl BasicOpenFgaServiceClient {
                 })?,
             )));
         let auth_layer = tower::util::option_layer(either_or_option);
-        let endpoint = get_tonic_endpoint_logged(endpoint.into())?;
+        let endpoint = get_tonic_endpoint_logged(&endpoint.into())?;
         let c = ServiceBuilder::new()
             .layer(auth_layer)
             .service(endpoint.connect_lazy());
@@ -83,10 +83,10 @@ impl BasicOpenFgaServiceClient {
                     client_secret,
                     token_endpoint.into(),
                 );
-                if scopes.len() > 0 {
-                    builder.add_scopes(scopes)
-                } else {
+                if scopes.is_empty() {
                     builder
+                } else {
+                    builder.add_scopes(scopes)
                 }
             }
                 .build()
@@ -96,7 +96,7 @@ impl BasicOpenFgaServiceClient {
                 })?,
             )));
         let auth_layer = tower::util::option_layer(either_or_option);
-        let endpoint = get_tonic_endpoint_logged(endpoint.into())?;
+        let endpoint = get_tonic_endpoint_logged(&endpoint.into())?;
         let c = ServiceBuilder::new()
             .layer(auth_layer)
             .service(endpoint.connect_lazy());
@@ -110,7 +110,13 @@ where
     T::Error: Into<StdError>,
     T::ResponseBody: Body<Data = Bytes> + Send + 'static,
     <T::ResponseBody as Body>::Error: Into<StdError> + Send,
+    T: Clone,
 {
+    /// Transform this service client into a higher-level [`OpenFgaClient`].
+    pub fn into_client(self, store_id: &str, authorization_model_id: &str) -> OpenFgaClient<T> {
+        OpenFgaClient::new(self, store_id, authorization_model_id)
+    }
+
     /// Fetch a store by name.
     /// If no store is found, returns `Ok(None)`.
     ///
@@ -252,7 +258,7 @@ type EitherOrOption = Option<
 >;
 
 #[cfg(feature = "auth-middle")]
-fn get_tonic_endpoint_logged(endpoint: url::Url) -> Result<Endpoint> {
+fn get_tonic_endpoint_logged(endpoint: &url::Url) -> Result<Endpoint> {
     Endpoint::new(endpoint.to_string()).map_err(|e| {
         tracing::error!("Could not construct OpenFGA client. Invalid endpoint `{endpoint}`: {e}");
         Error::InvalidEndpoint(endpoint.to_string())

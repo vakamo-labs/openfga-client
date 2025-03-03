@@ -98,11 +98,6 @@ where
     Arc::new(move |v| Box::pin(f(v)))
 }
 
-// type StaticMigrationFn =
-//     fn(
-//         OpenFgaServiceClient<tonic::transport::Channel>,
-//     ) -> Pin<Box<dyn Future<Output = std::result::Result<(), StdError>> + Send>>;
-
 impl<T> TupleModelManager<T>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody>,

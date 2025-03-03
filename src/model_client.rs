@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use async_stream::stream;
 use futures::{pin_mut, StreamExt};
@@ -6,12 +9,12 @@ use tonic::codegen::{Body, Bytes, StdError};
 
 use crate::{
     client::{
-        CheckRequest, CheckRequestTupleKey, ConsistencyPreference, ContextualTupleKeys,
-        ListObjectsRequest, ListObjectsResponse, OpenFgaServiceClient, ReadRequest,
-        ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition, WriteRequest,
-        WriteRequestDeletes, WriteRequestWrites,
+        batch_check_single_result::CheckResult, BatchCheckItem, BatchCheckRequest, CheckRequest,
+        CheckRequestTupleKey, ConsistencyPreference, ContextualTupleKeys, ExpandRequest,
+        ExpandRequestTupleKey, ListObjectsRequest, ListObjectsResponse, OpenFgaServiceClient,
+        ReadRequest, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition,
+        UsersetTree, WriteRequest, WriteRequestDeletes, WriteRequestWrites,
     },
-    client_ext::BasicAuthLayer,
     error::{Error, Result},
 };
 
@@ -23,14 +26,13 @@ const DEFAULT_MAX_TUPLES_PER_WRITE: i32 = 100;
 /// Why you should use this wrapper:
 ///
 /// * Handles the `store_id` and `authorization_model_id` for you - you don't need to pass them in every request
-/// * For finer control, provides access to the underlying [`Self::client`] to make requests directly
 /// * Applies the same configured `consistency` to all requests
 /// * Ensures the number of writes and deletes does not exceed OpenFGA's limit
 /// * Uses tracing to log errors
 /// * Never sends empty writes or deletes, which fails on OpenFGA
 /// * Uses `impl Into<ReadRequestTupleKey>` arguments instead of very specific types like [`ReadRequestTupleKey`]
-/// * Provides a `read_all_pages` method to read all pages of a tuple
-/// * Most methods don't require mutable access to the client. Cloning tonics client is cheap.
+/// * Most methods don't require mutable access to the client. Cloning tonic clients is cheap.
+/// * If a method is missing, the [`OpenFgaClient::client()`] provides access to the underlying client with full control
 ///
 /// # Example
 ///
@@ -61,11 +63,12 @@ struct ModelClientInner {
     consistency: ConsistencyPreference,
 }
 
+#[cfg(feature = "auth-middle")]
 /// Specialization of the [`OpenFgaClient`] that includes optional
 /// authentication with pre-shared keys (Bearer tokens) or client credentials.
 /// For more fine-granular control, construct [`OpenFgaClient`] directly
 /// with a custom [`OpenFgaServiceClient`].
-pub type BasicOpenFgaClient = OpenFgaClient<BasicAuthLayer>;
+pub type BasicOpenFgaClient = OpenFgaClient<crate::client::BasicAuthLayer>;
 
 impl<T> OpenFgaClient<T>
 where
@@ -144,7 +147,8 @@ where
         self.inner.consistency
     }
 
-    /// Wrapper around [`OpenFgaServiceClient::write`] that ensures that:
+    /// Write or delete tuples from FGA.
+    /// This is a wrapper around [`OpenFgaServiceClient::write`] that ensures that:
     ///
     /// * Ensures the number of writes and deletes does not exceed OpenFGA's limit
     /// * Does not send empty writes or deletes
@@ -220,7 +224,8 @@ where
             .map(|_| ())
     }
 
-    /// Wrapper around [`OpenFgaServiceClient::read`] that:
+    /// Read tuples from OpenFGA.
+    /// This is a wrapper around [`OpenFgaServiceClient::read`] that:
     ///
     /// * Traces any errors that occur
     /// * Enriches the error with the `read_request` that caused the error
@@ -253,7 +258,7 @@ where
             })
     }
 
-    /// Read all tuples, paginating through all pages.
+    /// Read all tuples, with pagination.
     /// For details on the parameters, see [`OpenFgaServiceClient::read_all_pages`].
     ///
     /// # Errors
@@ -313,6 +318,80 @@ where
                 Error::RequestFailed(e)
             })?;
         Ok(response.get_ref().allowed)
+    }
+
+    /// Check multiple tuples at once.
+    /// Returned `HashMap` contains one key for each `correlation_id` in the input.
+    ///
+    /// # Errors
+    /// * [`Error::RequestFailed`] if the check request fails
+    pub async fn batch_check<I>(
+        &self,
+        checks: impl IntoIterator<Item = I>,
+    ) -> Result<HashMap<String, Option<CheckResult>>>
+    where
+        I: Into<BatchCheckItem>,
+    {
+        let checks: Vec<BatchCheckItem> = checks.into_iter().map(Into::into).collect();
+        let request = BatchCheckRequest {
+            store_id: self.store_id().to_string(),
+            checks,
+            authorization_model_id: self.authorization_model_id().to_string(),
+            consistency: self.consistency().into(),
+        };
+        let response = self
+            .client
+            .clone()
+            .batch_check(request.clone())
+            .await
+            .map_err(|e| {
+                let request_debug = format!("{request:?}");
+                tracing::error!(
+                    "Batch-Check request failed with status {e}. Request: {request_debug}"
+                );
+                Error::RequestFailed(e)
+            })?;
+
+        Ok(response
+            .into_inner()
+            .result
+            .into_iter()
+            .map(|(k, v)| (k, v.check_result))
+            .collect())
+    }
+
+    /// Expand all relationships in userset tree format.
+    /// Useful to reason about and debug a certain relationship.
+    ///
+    /// # Errors
+    /// * [`Error::RequestFailed`] if the expand request fails
+    ///
+    pub async fn expand(
+        &self,
+        tuple_key: impl Into<ExpandRequestTupleKey>,
+        contextual_tuples: impl Into<Option<Vec<TupleKey>>>,
+    ) -> Result<Option<UsersetTree>> {
+        let expand_request = ExpandRequest {
+            store_id: self.store_id().to_string(),
+            tuple_key: Some(tuple_key.into()),
+            authorization_model_id: self.authorization_model_id().to_string(),
+            consistency: self.consistency().into(),
+            contextual_tuples: contextual_tuples
+                .into()
+                .map(|tuple_keys| ContextualTupleKeys { tuple_keys }),
+        };
+        let response = self
+            .client
+            .clone()
+            .expand(expand_request.clone())
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "Expand request failed with status {e}. Request: {expand_request:?}"
+                );
+                Error::RequestFailed(e)
+            })?;
+        Ok(response.into_inner().tree)
     }
 
     /// Simplified version of [`Self::check`] without contextual tuples, context, or trace.
