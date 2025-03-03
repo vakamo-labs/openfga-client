@@ -121,11 +121,11 @@ where
     /// the model manager will not be able to find the model again.
     /// Use different model prefixes if models for different purposes are stored in the
     /// same OpenFGA store.
-    pub fn new(client: OpenFgaServiceClient<T>, store_name: String, model_prefix: String) -> Self {
+    pub fn new(client: OpenFgaServiceClient<T>, store_name: &str, model_prefix: &str) -> Self {
         TupleModelManager {
             client,
-            model_prefix,
-            store_name,
+            model_prefix: model_prefix.to_string(),
+            store_name: store_name.to_string(),
             migrations: HashMap::new(),
         }
     }
