@@ -224,7 +224,7 @@ where
 }
 
 #[cfg(feature = "auth-middle")]
-pub(crate) type BasicAuthLayer = tower::util::Either<
+pub type BasicAuthLayer = tower::util::Either<
     tower::util::Either<
         tonic::service::interceptor::InterceptedService<
             Channel,

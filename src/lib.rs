@@ -100,7 +100,7 @@ pub mod client {
     pub use open_fga_service_client::OpenFgaServiceClient;
 
     #[cfg(feature = "auth-middle")]
-    pub use super::client_ext::BasicOpenFgaServiceClient;
+    pub use super::client_ext::{BasicAuthLayer, BasicOpenFgaServiceClient};
     pub use super::{
         generated::*,
         model_client::{BasicOpenFgaClient, OpenFgaClient},
