@@ -641,8 +641,7 @@ pub(crate) mod test {
         #[tokio::test]
         async fn test_get_existing_versions_nonexistent_store() {
             let client = get_service_client().await;
-            let mut manager =
-                TupleModelManager::new(client, "nonexistent".to_string(), "test".to_string());
+            let mut manager = TupleModelManager::new(client, "nonexistent", "test");
 
             let versions = manager.get_existing_versions().await.unwrap();
             assert!(versions.is_empty());
@@ -653,7 +652,7 @@ pub(crate) mod test {
             let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let _store = client.get_or_create_store(&store_name).await.unwrap();
-            let mut manager = TupleModelManager::new(client, store_name, "test".to_string());
+            let mut manager = TupleModelManager::new(client, &store_name, "test");
             let versions = manager.get_existing_versions().await.unwrap();
             assert!(versions.is_empty());
         }
@@ -664,11 +663,7 @@ pub(crate) mod test {
             let model_prefix = "test";
             let version = AuthorizationModelVersion::new(1, 0);
 
-            let mut manager = TupleModelManager::new(
-                client.clone(),
-                store.name.clone(),
-                model_prefix.to_string(),
-            );
+            let mut manager = TupleModelManager::new(client.clone(), &store.name, model_prefix);
 
             // Non-existent model
             assert_eq!(
@@ -737,20 +732,16 @@ pub(crate) mod test {
             let execution_counter_1 = Arc::new(Mutex::new(0));
 
             let execution_counter_clone = execution_counter_1.clone();
-            let mut manager = TupleModelManager::new(
-                client.clone(),
-                store_name.clone(),
-                "test-model".to_string(),
-            )
-            .add_model(
-                model_1_0.clone(),
-                version_1_0,
-                Some(move |client| {
-                    let counter = execution_counter_clone.clone();
-                    async move { v1_pre_migration_fn(client, counter).await }
-                }),
-                None::<MigrationFn<_>>,
-            );
+            let mut manager = TupleModelManager::new(client.clone(), &store_name, "test-model")
+                .add_model(
+                    model_1_0.clone(),
+                    version_1_0,
+                    Some(move |client| {
+                        let counter = execution_counter_clone.clone();
+                        async move { v1_pre_migration_fn(client, counter).await }
+                    }),
+                    None::<MigrationFn<_>>,
+                );
             manager.migrate().await.unwrap();
             // Check hook was called once
             assert_eq!(*execution_counter_1.lock().unwrap(), 1);
