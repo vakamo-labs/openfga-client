@@ -1,0 +1,4 @@
+[submodule "protoc-gen-prost"]
+	path = protoc-gen-prost
+	url = https://github.com/SuperFluffy/protoc-gen-prost
+	branch = bump-tonic

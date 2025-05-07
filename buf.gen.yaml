@@ -1,6 +1,7 @@
 version: v1
 plugins:
-  - plugin: buf.build/community/neoeinstein-prost:v0.4.0
+  - plugin: protoc-gen-prost
+    path: ./protoc-gen-prost/target/release/protoc-gen-prost
     out: src/gen
     opt:
       - bytes=.
@@ -14,7 +15,8 @@ plugins:
       - extern_path=.google.protobuf.Any=::prost_wkt_types::Any
   - plugin: buf.build/community/neoeinstein-prost-serde:v0.3.1
     out: src/gen
-  - plugin: buf.build/community/neoeinstein-tonic:v0.4.1
+  - plugin: protoc-gen-tonic
+    path: ./protoc-gen-prost/target/release/protoc-gen-tonic
     out: src/gen
     opt:
       - no_server
