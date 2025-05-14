@@ -17,8 +17,8 @@ env:
   # Change to specific Rust release to pin
   rust_stable: stable
   rust_nightly: nightly-2025-01-25
-  rust_toolchain: '1.84'
-  rust_min: '1.81'
+  rust_toolchain: '1.86'
+  rust_min: '1.82'
 
 defaults:
   run:

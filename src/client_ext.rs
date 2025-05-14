@@ -272,7 +272,7 @@ pub(crate) mod test {
     // #[needs_env_var(TEST_OPENFGA_CLIENT_GRPC_URL)]
     #[cfg(feature = "auth-middle")]
     mod openfga {
-        use std::collections::HashSet;
+        use std::collections::{HashMap, HashSet};
 
         use super::super::*;
         use crate::{
@@ -317,6 +317,31 @@ pub(crate) mod test {
                 .expect("Auth model can be written");
 
             auth_model.into_inner()
+        }
+
+        #[tokio::test]
+        async fn test_get_store_by_name_many() {
+            let mut client = get_basic_client();
+
+            let mut stores = HashMap::new();
+            for _i in 0..201 {
+                let store_name = format!("store-{}", uuid::Uuid::now_v7());
+                let r = client
+                    .get_or_create_store(&store_name)
+                    .await
+                    .expect("Store can be created");
+                assert_eq!(store_name, r.name);
+                stores.insert(store_name, r.id);
+            }
+
+            for (store_name, store_id) in stores {
+                let store = client
+                    .get_store_by_name(&store_name)
+                    .await
+                    .expect("Store can be fetched")
+                    .expect("Store exists");
+                assert_eq!(store_id, store.id);
+            }
         }
 
         #[tokio::test]
