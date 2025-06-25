@@ -65,4 +65,4 @@ This project is licensed under the Apache-2.0 License. See the LICENSE file for 
 # Contributing
 Contributions are welcome! Please open an issue or submit a pull request on GitHub.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for some tips.
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for some tips.
