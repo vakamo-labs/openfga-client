@@ -356,7 +356,7 @@ where
             })?;
 
         let mut map = HashMap::new();
-        for (k, v) in response.into_inner().result.into_iter() {
+        for (k, v) in response.into_inner().result {
             match v.check_result {
                 // The server should return `Some(_)` for every tuple to check.
                 // `None` is not expected to occur, hence returning an error for the *entire*
