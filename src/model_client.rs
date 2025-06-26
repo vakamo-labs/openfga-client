@@ -325,10 +325,12 @@ where
     ///
     /// # Errors
     /// * [`Error::RequestFailed`] if the check request fails
+    /// * [`Error::ExpectedOneof`] if the server unexpectedly returns `None` for one of the tuples
+    ///   to check.
     pub async fn batch_check<I>(
         &self,
         checks: impl IntoIterator<Item = I>,
-    ) -> Result<HashMap<String, Option<CheckResult>>>
+    ) -> Result<HashMap<String, CheckResult>>
     where
         I: Into<BatchCheckItem>,
     {
@@ -339,6 +341,7 @@ where
             authorization_model_id: self.authorization_model_id().to_string(),
             consistency: self.consistency().into(),
         };
+
         let response = self
             .client
             .clone()
@@ -352,12 +355,17 @@ where
                 Error::RequestFailed(e)
             })?;
 
-        Ok(response
-            .into_inner()
-            .result
-            .into_iter()
-            .map(|(k, v)| (k, v.check_result))
-            .collect())
+        let mut map = HashMap::new();
+        for (k, v) in response.into_inner().result {
+            match v.check_result {
+                // The server should return `Some(_)` for every tuple to check.
+                // `None` is not expected to occur, hence returning an error for the *entire*
+                // batch request to keep the API simple.
+                Some(v) => map.insert(k, v),
+                None => return Err(Error::ExpectedOneof),
+            };
+        }
+        Ok(map)
     }
 
     /// Expand all relationships in userset tree format.

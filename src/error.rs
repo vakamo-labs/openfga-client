@@ -44,6 +44,13 @@ pub enum Error {
         "Too many writes and deletes in single OpenFGA transaction (actual) {actual} > {max} (max)"
     )]
     TooManyWrites { actual: i32, max: i32 },
+    /// Protobuf `oneof` fields are always wrapped in an `Option` by `prost` ([ref]).
+    /// `ExpectedOneof` is raised if OpenFGA is expected to return one of the variants
+    /// (i.e. `Some(T)`) but instead `None` was received.
+    ///
+    /// [ref]: https://github.com/tokio-rs/prost?tab=readme-ov-file#oneof-fields
+    #[error("Expected Oneof variant but got None")]
+    ExpectedOneof,
 }
 
 impl Error {
