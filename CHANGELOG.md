@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/vakamo-labs/openfga-client/compare/v0.2.0...v0.3.0) - 2025-06-27
+
+### Added
+
+- [**breaking**] strip `Option` in `batch_check` due to prost's handling of `oneof` ([#15](https://github.com/vakamo-labs/openfga-client/pull/15))
+
+### Other
+
+- increase visibility of DEVELOPMENT.md ([#14](https://github.com/vakamo-labs/openfga-client/pull/14))
+- Add test get multiple stores ([#10](https://github.com/vakamo-labs/openfga-client/pull/10))
+
 ## [0.2.0](https://github.com/vakamo-labs/openfga-client/compare/v0.1.2...v0.2.0) - 2025-03-03
 
 ### Added
