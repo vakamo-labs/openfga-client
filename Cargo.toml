@@ -22,7 +22,7 @@ async-stream = "0.3"
 futures = "0.3"
 http = "1"
 middle = { version = "0.3", optional = true, features = ["tonic"] }
-prost = { version = "0.13", features = ["std", "prost-derive"] }
+prost = { version = "0.14", features = ["std", "prost-derive"] }
 prost-types = "0.13"
 prost-wkt = "0.6"
 prost-wkt-types = { version = "0.6", features = ["vendored-protoc"] }
