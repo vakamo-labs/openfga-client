@@ -17,6 +17,7 @@ doc-test:
 
 # Update the generated rust code from the protobuf files
 update: 
+    cd ./protoc-gen-prost && git checkout bump-tonic && cargo build --release && cd ../
     buf generate https://github.com/openfga/api#format=git
 
 # Update test-sample-stores
