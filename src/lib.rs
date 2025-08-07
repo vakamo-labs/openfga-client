@@ -95,6 +95,7 @@
 //! #[allow(clippy::unused_async)]
 //! async fn v1_1_migration(
 //!     client: OpenFgaServiceClient<tonic::transport::Channel>,
+//!     state: (),
 //! ) -> std::result::Result<(), StdError> {
 //!     let _ = client;
 //!     Ok(())
@@ -115,8 +116,8 @@
 //!             serde_json::from_str(include_str!("../tests/model-manager/v1.0/schema.json"))?,
 //!             AuthorizationModelVersion::new(1, 0),
 //!             // For major version upgrades, this is where tuple migrations go.
-//!             None::<MigrationFn<_>>,
-//!             None::<MigrationFn<_>>,
+//!             None::<MigrationFn<_, _>>,
+//!             None::<MigrationFn<_, _>>,
 //!         )
 //!         // Second model - version 1.1
 //!         .add_model(
@@ -124,11 +125,11 @@
 //!             AuthorizationModelVersion::new(1, 1),
 //!             // For major version upgrades, this is where tuple migrations go.
 //!             Some(v1_1_migration),
-//!             None::<MigrationFn<_>>,
+//!             None::<MigrationFn<_, _>>,
 //!         );
 //!
 //!     // Perform the migration if necessary
-//!     manager.migrate().await?;
+//!     manager.migrate(()).await?;
 //!
 //!     let store_id = service_client
 //!         .get_store_by_name(store_name)
