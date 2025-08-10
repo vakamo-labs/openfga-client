@@ -71,6 +71,9 @@ where
 
 #[derive(Clone)]
 struct Migration<T, S> {
+    /// The model being migrated to.
+    ///
+    /// If this has value `vX`, the active model *after* the migration is `vX`.
     model: VersionedAuthorizationModel,
     pre_migration_fn: Option<BoxedMigrationFn<T, S>>,
     post_migration_fn: Option<BoxedMigrationFn<T, S>>,
@@ -80,12 +83,20 @@ struct Migration<T, S> {
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Possible function pointer that implements the migration function signature.
-pub type MigrationFn<T, S> =
-    fn(OpenFgaServiceClient<T>, S) -> BoxFuture<'static, std::result::Result<(), StdError>>;
+pub type MigrationFn<T, S> = fn(
+    OpenFgaServiceClient<T>,
+    Option<AuthorizationModelVersion>,
+    Option<AuthorizationModelVersion>,
+    S,
+) -> BoxFuture<'static, std::result::Result<(), StdError>>;
 
 /// Type alias for the migration function signature.
-type DynMigrationFn<T, S> =
-    dyn Fn(OpenFgaServiceClient<T>, S) -> BoxFuture<'static, std::result::Result<(), StdError>>;
+type DynMigrationFn<T, S> = dyn Fn(
+    OpenFgaServiceClient<T>,
+    Option<AuthorizationModelVersion>,
+    Option<AuthorizationModelVersion>,
+    S,
+) -> BoxFuture<'static, std::result::Result<(), StdError>>;
 
 /// Boxed migration function
 type BoxedMigrationFn<T, S> = Arc<DynMigrationFn<T, S>>;
@@ -93,10 +104,22 @@ type BoxedMigrationFn<T, S> = Arc<DynMigrationFn<T, S>>;
 // Function to box the async functions that take an i32 parameter
 fn box_migration_fn<T, S, F, Fut>(f: F) -> BoxedMigrationFn<T, S>
 where
-    F: Fn(OpenFgaServiceClient<T>, S) -> Fut + Send + 'static,
+    // TODO(mooori): try to use MigrationFn here
+    F: Fn(
+            OpenFgaServiceClient<T>,
+            Option<AuthorizationModelVersion>,
+            Option<AuthorizationModelVersion>,
+            S,
+        ) -> Fut
+        + Send
+        + 'static,
     Fut: Future<Output = std::result::Result<(), StdError>> + Send + 'static,
 {
-    Arc::new(move |v, s| Box::pin(f(v, s)))
+    Arc::new(
+        move |client, prev_auth_model_id, active_auth_model_id, state| {
+            Box::pin(f(client, prev_auth_model_id, active_auth_model_id, state))
+        },
+    )
 }
 
 impl<T, S> TupleModelManager<T, S>
@@ -137,8 +160,27 @@ where
         mut self,
         model: AuthorizationModel,
         version: AuthorizationModelVersion,
-        pre_migration_fn: Option<impl Fn(OpenFgaServiceClient<T>, S) -> FutPre + Send + 'static>,
-        post_migration_fn: Option<impl Fn(OpenFgaServiceClient<T>, S) -> FutPost + Send + 'static>,
+        // TODO(mooori): try to use MigrationFn here
+        pre_migration_fn: Option<
+            impl Fn(
+                    OpenFgaServiceClient<T>,
+                    Option<AuthorizationModelVersion>,
+                    Option<AuthorizationModelVersion>,
+                    S,
+                ) -> FutPre
+                + Send
+                + 'static,
+        >,
+        post_migration_fn: Option<
+            impl Fn(
+                    OpenFgaServiceClient<T>,
+                    Option<AuthorizationModelVersion>,
+                    Option<AuthorizationModelVersion>,
+                    S,
+                ) -> FutPost
+                + Send
+                + 'static,
+        >,
     ) -> Self
     where
         FutPre: Future<Output = std::result::Result<(), StdError>> + Send + 'static,
@@ -184,6 +226,11 @@ where
         let store = self.client.get_or_create_store(&self.store_name).await?;
         let existing_models = self.get_existing_versions().await?;
         let max_existing_model = existing_models.iter().max();
+        // For the sake of MigrationFns, can we assume max_existing model is the currently active
+        // model?
+        let mut curr_model = max_existing_model.cloned();
+        // TODO: get it for the first migration that's being run
+        let mut prev_model = None;
 
         if let Some(max_existing_model) = max_existing_model {
             tracing::info!(
@@ -202,7 +249,7 @@ where
 
             // Pre-hook
             if let Some(pre_migration_fn) = migration.pre_migration_fn.as_ref() {
-                pre_migration_fn(client.clone(), state.clone())
+                pre_migration_fn(client.clone(), prev_model, curr_model, state.clone())
                     .await
                     .map_err(|e| {
                         tracing::error!("Error in OpenFGA pre-migration hook: {:?}", e);
@@ -228,9 +275,13 @@ where
                 })?;
             tracing::debug!("Model written: {:?}", written_model);
 
+            // Update model versions passed to migration hooks.
+            prev_model = curr_model;
+            curr_model = Some(migration.model.version());
+
             // Post-hook
             if let Some(post_migration_fn) = migration.post_migration_fn.as_ref() {
-                post_migration_fn(client.clone(), state.clone())
+                post_migration_fn(client.clone(), prev_model, curr_model, state.clone())
                     .await
                     .map_err(|e| {
                         tracing::error!("Error in OpenFGA post-migration hook: {:?}", e);
@@ -741,10 +792,12 @@ pub(crate) mod test {
                 .add_model(
                     model_1_0.clone(),
                     version_1_0,
-                    Some(move |client, ()| {
-                        let counter = execution_counter_clone.clone();
-                        async move { v1_pre_migration_fn(client, counter).await }
-                    }),
+                    Some(
+                        move |client, _prev_auth_model_id, _curr_auth_model_id, _state| {
+                            let counter = execution_counter_clone.clone();
+                            async move { v1_pre_migration_fn(client, counter).await }
+                        },
+                    ),
                     None::<MigrationFn<_, _>>,
                 );
             manager.migrate(()).await.unwrap();
@@ -779,10 +832,12 @@ pub(crate) mod test {
                 model_1_1.clone(),
                 version_1_1,
                 None::<MigrationFn<_, _>>,
-                Some(move |client, _state| {
-                    let counter = execution_counter_clone.clone();
-                    async move { v2_post_migration_fn(client, counter).await }
-                }),
+                Some(
+                    move |client, _prev_auth_model_id, _curr_auth_model_id, _state| {
+                        let counter = execution_counter_clone.clone();
+                        async move { v2_post_migration_fn(client, counter).await }
+                    },
+                ),
             );
             manager.migrate(()).await.unwrap();
             manager.migrate(()).await.unwrap();

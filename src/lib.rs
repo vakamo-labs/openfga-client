@@ -94,10 +94,11 @@
 //!
 //! #[allow(clippy::unused_async)]
 //! async fn v1_1_migration(
-//!     client: OpenFgaServiceClient<tonic::transport::Channel>,
-//!     state: (),
+//!     _client: OpenFgaServiceClient<tonic::transport::Channel>,
+//!     _prev_auth_model_id: Option<AuthorizationModelVersion>,
+//!     _active_auth_model_id: Option<AuthorizationModelVersion>,
+//!     _state: (),
 //! ) -> std::result::Result<(), StdError> {
-//!     let _ = client;
 //!     Ok(())
 //! }
 //!
