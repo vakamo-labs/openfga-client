@@ -228,7 +228,7 @@ where
         let max_existing_model = existing_models.iter().max();
         // For the sake of MigrationFns, can we assume max_existing model is the currently active
         // model?
-        let mut curr_model = max_existing_model.cloned();
+        let mut curr_model = max_existing_model.copied();
         // TODO: get it for the first migration that's being run
         let mut prev_model = None;
 
