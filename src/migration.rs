@@ -85,16 +85,16 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// Possible function pointer that implements the migration function signature.
 pub type MigrationFn<T, S> = fn(
     OpenFgaServiceClient<T>,
-    Option<AuthorizationModelVersion>,
-    Option<AuthorizationModelVersion>,
+    Option<String>,
+    Option<String>,
     S,
 ) -> BoxFuture<'static, std::result::Result<(), StdError>>;
 
 /// Type alias for the migration function signature.
 type DynMigrationFn<T, S> = dyn Fn(
     OpenFgaServiceClient<T>,
-    Option<AuthorizationModelVersion>,
-    Option<AuthorizationModelVersion>,
+    Option<String>,
+    Option<String>,
     S,
 ) -> BoxFuture<'static, std::result::Result<(), StdError>>;
 
@@ -105,14 +105,7 @@ type BoxedMigrationFn<T, S> = Arc<DynMigrationFn<T, S>>;
 fn box_migration_fn<T, S, F, Fut>(f: F) -> BoxedMigrationFn<T, S>
 where
     // TODO(mooori): try to use MigrationFn here
-    F: Fn(
-            OpenFgaServiceClient<T>,
-            Option<AuthorizationModelVersion>,
-            Option<AuthorizationModelVersion>,
-            S,
-        ) -> Fut
-        + Send
-        + 'static,
+    F: Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> Fut + Send + 'static,
     Fut: Future<Output = std::result::Result<(), StdError>> + Send + 'static,
 {
     Arc::new(
@@ -162,22 +155,12 @@ where
         version: AuthorizationModelVersion,
         // TODO(mooori): try to use MigrationFn here
         pre_migration_fn: Option<
-            impl Fn(
-                    OpenFgaServiceClient<T>,
-                    Option<AuthorizationModelVersion>,
-                    Option<AuthorizationModelVersion>,
-                    S,
-                ) -> FutPre
+            impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPre
                 + Send
                 + 'static,
         >,
         post_migration_fn: Option<
-            impl Fn(
-                    OpenFgaServiceClient<T>,
-                    Option<AuthorizationModelVersion>,
-                    Option<AuthorizationModelVersion>,
-                    S,
-                ) -> FutPost
+            impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPost
                 + Send
                 + 'static,
         >,
@@ -228,9 +211,17 @@ where
         let max_existing_model = existing_models.iter().max();
         // For the sake of MigrationFns, can we assume max_existing model is the currently active
         // model?
-        let mut curr_model = max_existing_model.copied();
+        let mut curr_model_id = if let Some(&version) = max_existing_model {
+            let id = self
+                .get_authorization_model_id(version)
+                .await?
+                .expect("Should get id of an existing model");
+            Some(id)
+        } else {
+            None
+        };
         // TODO: get it for the first migration that's being run
-        let mut prev_model = None;
+        let mut prev_model_id = None;
 
         if let Some(max_existing_model) = max_existing_model {
             tracing::info!(
@@ -249,15 +240,20 @@ where
 
             // Pre-hook
             if let Some(pre_migration_fn) = migration.pre_migration_fn.as_ref() {
-                pre_migration_fn(client.clone(), prev_model, curr_model, state.clone())
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Error in OpenFGA pre-migration hook: {:?}", e);
-                        Error::MigrationHookFailed {
-                            version: migration.model.version().to_string(),
-                            error: Arc::new(e),
-                        }
-                    })?;
+                pre_migration_fn(
+                    client.clone(),
+                    prev_model_id.clone(),
+                    curr_model_id.clone(),
+                    state.clone(),
+                )
+                .await
+                .map_err(|e| {
+                    tracing::error!("Error in OpenFGA pre-migration hook: {:?}", e);
+                    Error::MigrationHookFailed {
+                        version: migration.model.version().to_string(),
+                        error: Arc::new(e),
+                    }
+                })?;
             }
 
             // Write Model
@@ -276,20 +272,25 @@ where
             tracing::debug!("Model written: {:?}", written_model);
 
             // Update model versions passed to migration hooks.
-            prev_model = curr_model;
-            curr_model = Some(migration.model.version());
+            prev_model_id = curr_model_id.clone();
+            curr_model_id = Some(migration.model.model.id.to_string());
 
             // Post-hook
             if let Some(post_migration_fn) = migration.post_migration_fn.as_ref() {
-                post_migration_fn(client.clone(), prev_model, curr_model, state.clone())
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Error in OpenFGA post-migration hook: {:?}", e);
-                        Error::MigrationHookFailed {
-                            version: migration.model.version().to_string(),
-                            error: Arc::new(e),
-                        }
-                    })?;
+                post_migration_fn(
+                    client.clone(),
+                    prev_model_id.clone(),
+                    curr_model_id.clone(),
+                    state.clone(),
+                )
+                .await
+                .map_err(|e| {
+                    tracing::error!("Error in OpenFGA post-migration hook: {:?}", e);
+                    Error::MigrationHookFailed {
+                        version: migration.model.version().to_string(),
+                        error: Arc::new(e),
+                    }
+                })?;
             }
 
             // Mark as applied
@@ -793,9 +794,18 @@ pub(crate) mod test {
                     model_1_0.clone(),
                     version_1_0,
                     Some(
-                        move |client, _prev_auth_model_id, _curr_auth_model_id, _state| {
+                        // TODO(mooori): try to use state here
+                        move |client, prev_auth_model_id, curr_auth_model_id, _state| {
                             let counter = execution_counter_clone.clone();
-                            async move { v1_pre_migration_fn(client, counter).await }
+                            async move {
+                                v1_pre_migration_fn(
+                                    client,
+                                    prev_auth_model_id,
+                                    curr_auth_model_id,
+                                    counter,
+                                )
+                                .await
+                            }
                         },
                     ),
                     None::<MigrationFn<_, _>>,
@@ -833,9 +843,18 @@ pub(crate) mod test {
                 version_1_1,
                 None::<MigrationFn<_, _>>,
                 Some(
-                    move |client, _prev_auth_model_id, _curr_auth_model_id, _state| {
+                    // TODO(mooori): try to use state here
+                    move |client, prev_auth_model_id, curr_auth_model_id, _state| {
                         let counter = execution_counter_clone.clone();
-                        async move { v2_post_migration_fn(client, counter).await }
+                        async move {
+                            v2_post_migration_fn(
+                                client,
+                                prev_auth_model_id,
+                                curr_auth_model_id,
+                                counter,
+                            )
+                            .await
+                        }
                     },
                 ),
             );
@@ -890,6 +909,9 @@ pub(crate) mod test {
     #[allow(clippy::unused_async)]
     async fn v1_pre_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
+        _prev_model: Option<String>,
+        _curr_model: Option<String>,
+        // TODO(mooori): try to use State
         counter_mutex: Arc<Mutex<i32>>,
     ) -> std::result::Result<(), StdError> {
         let _ = client;
@@ -908,6 +930,8 @@ pub(crate) mod test {
     #[allow(clippy::unused_async)]
     async fn v2_post_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
+        _prev_model: Option<String>,
+        _curr_model: Option<String>,
         counter_mutex: Arc<Mutex<i32>>,
     ) -> std::result::Result<(), StdError> {
         let _ = client;

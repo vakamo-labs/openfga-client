@@ -95,8 +95,8 @@
 //! #[allow(clippy::unused_async)]
 //! async fn v1_1_migration(
 //!     _client: OpenFgaServiceClient<tonic::transport::Channel>,
-//!     _prev_auth_model_id: Option<AuthorizationModelVersion>,
-//!     _active_auth_model_id: Option<AuthorizationModelVersion>,
+//!     _prev_auth_model_id: Option<String>,
+//!     _active_auth_model_id: Option<String>,
 //!     _state: (),
 //! ) -> std::result::Result<(), StdError> {
 //!     Ok(())
