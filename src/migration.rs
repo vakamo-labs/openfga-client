@@ -270,7 +270,7 @@ where
             tracing::debug!("Model written: {:?}", written_model);
 
             // Update model versions passed to migration hooks.
-            prev_model_id = curr_model_id.clone();
+            prev_model_id.clone_from(&curr_model_id);
             curr_model_id = Some(migration.model.model.id.to_string());
 
             // Post-hook
