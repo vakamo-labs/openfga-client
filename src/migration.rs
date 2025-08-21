@@ -83,6 +83,16 @@ struct Migration<T, S> {
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Possible function pointer that implements the migration function signature.
+///
+/// The arguments are:
+///
+/// 1) A client connected to endpoint that's being migrated
+/// 2) The id of the authorization model active prior to the invocation of the function
+/// 3) The id of the authorization model active when the function is invoked
+/// 4) The (user defined) state passed into the migration function
+///
+/// Authorization model ids may be undefined (`None`), e.g. for the pre hook of the first
+/// migration neither a previous nor a current model exist.
 pub type MigrationFn<T, S> = fn(
     OpenFgaServiceClient<T>,
     Option<String>,
@@ -593,7 +603,6 @@ impl<T, S> std::fmt::Debug for Migration<T, S> {
             .field("model", &self.model)
             .field("pre_migration_fn", &"...")
             .field("post_migration_fn", &"...")
-            .field("state", &"...")
             .finish()
     }
 }
