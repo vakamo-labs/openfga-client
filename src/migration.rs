@@ -209,36 +209,14 @@ where
         let mut existing_models_ordered = self.get_existing_versions().await?;
         existing_models_ordered.sort();
         let max_existing_model = existing_models_ordered.pop();
-        // For the sake of MigrationFns, can we assume max_existing model is the currently active
-        // model and second highest is the previous model?
-        // TODO(mooori) try to make these more concise
+
         let mut curr_model_id = if let Some(version) = max_existing_model {
-            let id = self
-                .get_authorization_model_id(version)
-                .await?
-                .ok_or_else(|| {
-                    tracing::error!("Missing authorization model id for model version {version}");
-                    Error::MissingAuthorizationModelId {
-                        model_prefix: self.model_prefix.clone(),
-                        version: version.to_string(),
-                    }
-                })?;
-            Some(id)
+            Some(self.require_authorization_model_id(version).await?)
         } else {
             None
         };
         let mut prev_model_id = if let Some(version) = existing_models_ordered.pop() {
-            let id = self
-                .get_authorization_model_id(version)
-                .await?
-                .ok_or_else(|| {
-                    tracing::error!("Missing authorization model id for model version {version}");
-                    Error::MissingAuthorizationModelId {
-                        model_prefix: self.model_prefix.clone(),
-                        version: version.to_string(),
-                    }
-                })?;
-            Some(id)
+            Some(self.require_authorization_model_id(version).await?)
         } else {
             None
         };
@@ -292,7 +270,7 @@ where
             tracing::debug!("Model written: {:?}", written_model);
 
             // Update model versions passed to migration hooks.
-            prev_model_id.clone_from(&curr_model_id);
+            prev_model_id = curr_model_id.clone();
             curr_model_id = Some(migration.model.model.id.to_string());
 
             // Post-hook
@@ -392,6 +370,23 @@ where
         });
 
         Ok(model_id)
+    }
+
+    /// Helper method that tries to get the authorization model id for `version` and returns
+    /// an error if the id cannot be found.
+    async fn require_authorization_model_id(
+        &mut self,
+        version: AuthorizationModelVersion,
+    ) -> Result<String> {
+        self.get_authorization_model_id(version)
+            .await?
+            .ok_or_else(|| {
+                tracing::error!("Missing authorization model id for model version {version}");
+                Error::MissingAuthorizationModelId {
+                    model_prefix: self.model_prefix.clone(),
+                    version: version.to_string(),
+                }
+            })
     }
 
     /// Mark a model version as applied in OpenFGA
