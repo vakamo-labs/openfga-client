@@ -92,13 +92,21 @@
 //! use openfga_client::migration::{AuthorizationModelVersion, MigrationFn, TupleModelManager};
 //! use openfga_client::tonic::codegen::StdError;
 //!
+//! /// Application specific state passed into migration functions.
+//! ///
+//! /// It must be clone so that in can be passed into *both* pre and post migration hooks.
+//! #[derive(Clone)]
+//! struct MyMigrationState {}
+//!
+//! /// An example MigrationFn.
 //! #[allow(clippy::unused_async)]
 //! async fn v1_1_migration(
 //!     _client: OpenFgaServiceClient<tonic::transport::Channel>,
 //!     _prev_auth_model_id: Option<String>,
 //!     _active_auth_model_id: Option<String>,
-//!     _state: (),
+//!     _state: MyMigrationState,
 //! ) -> std::result::Result<(), StdError> {
+//!     // `client` and `state` can be used to read and write tuples from the store
 //!     Ok(())
 //! }
 //!
@@ -130,7 +138,7 @@
 //!         );
 //!
 //!     // Perform the migration if necessary
-//!     manager.migrate(()).await?;
+//!     manager.migrate(MyMigrationState {}).await?;
 //!
 //!     let store_id = service_client
 //!         .get_store_by_name(store_name)

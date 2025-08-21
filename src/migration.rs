@@ -73,7 +73,7 @@ where
 struct Migration<T, S> {
     /// The model being migrated to.
     ///
-    /// If this has value `vX`, the active model *after* the migration is `vX`.
+    /// If this has value `vX`, the active model *after* the migration will be `vX`.
     model: VersionedAuthorizationModel,
     pre_migration_fn: Option<BoxedMigrationFn<T, S>>,
     post_migration_fn: Option<BoxedMigrationFn<T, S>>,
@@ -207,21 +207,42 @@ where
         }
 
         let store = self.client.get_or_create_store(&self.store_name).await?;
-        let existing_models = self.get_existing_versions().await?;
-        let max_existing_model = existing_models.iter().max();
+        let mut existing_models_ordered = self.get_existing_versions().await?;
+        existing_models_ordered.sort();
+        let max_existing_model = existing_models_ordered.pop();
         // For the sake of MigrationFns, can we assume max_existing model is the currently active
-        // model?
-        let mut curr_model_id = if let Some(&version) = max_existing_model {
+        // model and second highest is the previous model?
+        // TODO(mooori) try to make these more concise
+        let mut curr_model_id = if let Some(version) = max_existing_model {
             let id = self
                 .get_authorization_model_id(version)
                 .await?
-                .expect("Should get id of an existing model");
+                .ok_or_else(|| {
+                    tracing::error!("Missing authorization model id for model version {version}");
+                    Error::MissingAuthorizationModelId {
+                        model_prefix: self.model_prefix.clone(),
+                        version: version.to_string(),
+                    }
+                })?;
             Some(id)
         } else {
             None
         };
-        // TODO: get it for the first migration that's being run
-        let mut prev_model_id = None;
+        let mut prev_model_id = if let Some(version) = existing_models_ordered.pop() {
+            let id = self
+                .get_authorization_model_id(version)
+                .await?
+                .ok_or_else(|| {
+                    tracing::error!("Missing authorization model id for model version {version}");
+                    Error::MissingAuthorizationModelId {
+                        model_prefix: self.model_prefix.clone(),
+                        version: version.to_string(),
+                    }
+                })?;
+            Some(id)
+        } else {
+            None
+        };
 
         if let Some(max_existing_model) = max_existing_model {
             tracing::info!(
@@ -232,7 +253,7 @@ where
             tracing::info!("No model found in OpenFGA store");
         }
 
-        let ordered_migrations = self.migrations_to_perform(max_existing_model.copied());
+        let ordered_migrations = self.migrations_to_perform(max_existing_model);
 
         let mut client = self.client.clone();
         for migration in ordered_migrations {
