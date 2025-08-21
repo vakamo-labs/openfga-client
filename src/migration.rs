@@ -690,7 +690,7 @@ pub(crate) mod test {
 
     #[needs_env_var(TEST_OPENFGA_CLIENT_GRPC_URL)]
     pub(crate) mod openfga {
-        use std::{str::FromStr, sync::Mutex};
+        use std::str::FromStr;
 
         use pretty_assertions::assert_eq;
 
@@ -808,36 +808,21 @@ pub(crate) mod test {
                     .unwrap();
 
             let version_1_0 = AuthorizationModelVersion::new(1, 0);
-            let execution_counter_1 = Arc::new(Mutex::new(0));
 
-            let execution_counter_clone = execution_counter_1.clone();
+            let migration_state = MigrationState::default();
             let mut manager = TupleModelManager::new(client.clone(), &store_name, "test-model")
                 .add_model(
                     model_1_0.clone(),
                     version_1_0,
-                    Some(
-                        // TODO(mooori): try to use state here
-                        move |client, prev_auth_model_id, curr_auth_model_id, _state| {
-                            let counter = execution_counter_clone.clone();
-                            async move {
-                                v1_pre_migration_fn(
-                                    client,
-                                    prev_auth_model_id,
-                                    curr_auth_model_id,
-                                    counter,
-                                )
-                                .await
-                            }
-                        },
-                    ),
+                    Some(v1_pre_migration_fn),
                     None::<MigrationFn<_, _>>,
                 );
-            manager.migrate(()).await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
             // Check hook was called once
-            assert_eq!(*execution_counter_1.lock().unwrap(), 1);
-            manager.migrate(()).await.unwrap();
+            assert_eq!(*migration_state.counter_1.lock().unwrap(), 1);
+            manager.migrate(migration_state.clone()).await.unwrap();
             // Check hook was not called again
-            assert_eq!(*execution_counter_1.lock().unwrap(), 1);
+            assert_eq!(*migration_state.counter_1.lock().unwrap(), 1);
 
             // Check written model
             let auth_model_id = manager
@@ -858,36 +843,20 @@ pub(crate) mod test {
                 serde_json::from_str(include_str!("../tests/model-manager/v1.1/schema.json"))
                     .unwrap();
             let version_1_1 = AuthorizationModelVersion::new(1, 1);
-            let execution_counter_2 = Arc::new(Mutex::new(0));
-            let execution_counter_clone = execution_counter_2.clone();
             let mut manager = manager.add_model(
                 model_1_1.clone(),
                 version_1_1,
                 None::<MigrationFn<_, _>>,
-                Some(
-                    // TODO(mooori): try to use state here
-                    move |client, prev_auth_model_id, curr_auth_model_id, _state| {
-                        let counter = execution_counter_clone.clone();
-                        async move {
-                            v2_post_migration_fn(
-                                client,
-                                prev_auth_model_id,
-                                curr_auth_model_id,
-                                counter,
-                            )
-                            .await
-                        }
-                    },
-                ),
+                Some(v2_post_migration_fn),
             );
-            manager.migrate(()).await.unwrap();
-            manager.migrate(()).await.unwrap();
-            manager.migrate(()).await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
 
             // First migration still only called once
-            assert_eq!(*execution_counter_1.lock().unwrap(), 1);
+            assert_eq!(*migration_state.counter_1.lock().unwrap(), 1);
             // Second migration called once
-            assert_eq!(*execution_counter_2.lock().unwrap(), 1);
+            assert_eq!(*migration_state.counter_2.lock().unwrap(), 1);
 
             // Check written model
             let auth_model_id = manager
@@ -928,17 +897,22 @@ pub(crate) mod test {
         }
     }
 
+    #[derive(Default, Clone)]
+    struct MigrationState {
+        counter_1: Arc<Mutex<i32>>,
+        counter_2: Arc<Mutex<i32>>,
+    }
+
     #[allow(clippy::unused_async)]
     async fn v1_pre_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
         _prev_model: Option<String>,
         _curr_model: Option<String>,
-        // TODO(mooori): try to use State
-        counter_mutex: Arc<Mutex<i32>>,
+        state: MigrationState,
     ) -> std::result::Result<(), StdError> {
         let _ = client;
         // Throw an error for the second call
-        let mut counter = counter_mutex.lock().unwrap();
+        let mut counter = state.counter_1.lock().unwrap();
         *counter += 1;
         if *counter == 2 {
             return Err(Box::new(Error::RequestFailed(tonic::Status::new(
@@ -954,11 +928,11 @@ pub(crate) mod test {
         client: OpenFgaServiceClient<tonic::transport::Channel>,
         _prev_model: Option<String>,
         _curr_model: Option<String>,
-        counter_mutex: Arc<Mutex<i32>>,
+        state: MigrationState,
     ) -> std::result::Result<(), StdError> {
         let _ = client;
         // Throw an error for the second call
-        let mut counter = counter_mutex.lock().unwrap();
+        let mut counter = state.counter_2.lock().unwrap();
         *counter += 1;
         if *counter == 2 {
             return Err(Box::new(Error::RequestFailed(tonic::Status::new(
