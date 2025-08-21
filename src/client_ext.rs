@@ -30,6 +30,7 @@ impl BasicOpenFgaServiceClient {
     ///
     /// # Errors
     /// * [`Error::InvalidEndpoint`] if the endpoint is not a valid URL.
+    #[allow(clippy::result_large_err)]
     pub fn new_unauthenticated(endpoint: impl Into<url::Url>) -> Result<Self> {
         let either_or_option: EitherOrOption = None;
         let auth_layer = tower::util::option_layer(either_or_option);
@@ -45,6 +46,7 @@ impl BasicOpenFgaServiceClient {
     /// # Errors
     /// * [`Error::InvalidEndpoint`] if the endpoint is not a valid URL.
     /// * [`Error::InvalidToken`] if the token is not valid ASCII.
+    #[allow(clippy::result_large_err)]
     pub fn new_with_basic_auth(endpoint: impl Into<url::Url>, token: &str) -> Result<Self> {
         let either_or_option: EitherOrOption =
             Some(tower::util::Either::Right(tonic::service::interceptor(
@@ -258,6 +260,7 @@ type EitherOrOption = Option<
 >;
 
 #[cfg(feature = "auth-middle")]
+#[allow(clippy::result_large_err)]
 fn get_tonic_endpoint_logged(endpoint: &url::Url) -> Result<Endpoint> {
     Endpoint::new(endpoint.to_string()).map_err(|e| {
         tracing::error!("Could not construct OpenFGA client. Invalid endpoint `{endpoint}`: {e}");

@@ -181,6 +181,7 @@ where
         }
 
         let num_writes_and_deletes = i32::try_from(
+            #[allow(clippy::manual_saturating_arithmetic)]
             writes
                 .as_ref()
                 .map_or(0, Vec::len)
