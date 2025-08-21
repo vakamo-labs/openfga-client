@@ -104,7 +104,6 @@ type BoxedMigrationFn<T, S> = Arc<DynMigrationFn<T, S>>;
 // Function to box the async functions that take an i32 parameter
 fn box_migration_fn<T, S, F, Fut>(f: F) -> BoxedMigrationFn<T, S>
 where
-    // TODO(mooori): try to use MigrationFn here
     F: Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> Fut + Send + 'static,
     Fut: Future<Output = std::result::Result<(), StdError>> + Send + 'static,
 {
@@ -153,7 +152,6 @@ where
         mut self,
         model: AuthorizationModel,
         version: AuthorizationModelVersion,
-        // TODO(mooori): try to use MigrationFn here
         pre_migration_fn: Option<
             impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPre
                 + Send
