@@ -281,7 +281,7 @@ where
 
             // Update model versions passed to migration hooks.
             prev_model_id.clone_from(&curr_model_id);
-            curr_model_id = Some(migration.model.model.id.to_string());
+            curr_model_id = Some(written_model.get_ref().authorization_model_id.to_string());
 
             // Post-hook
             if let Some(post_migration_fn) = migration.post_migration_fn.as_ref() {
