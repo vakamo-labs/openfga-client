@@ -605,6 +605,52 @@ mod tests {
             client
         }
 
+        /// Verifies that all pages are read when *not* passing a `ReadRequestTupleKey`.
+        #[tokio::test]
+        #[traced_test]
+        async fn test_read_all_pages_empty_tuple() {
+            let client = get_client_with_custom_roles_model().await;
+
+            let loop_count = 100;
+            let tuples_per_loop = 3;
+            for i in 0..loop_count {
+                // Write to different relations with different users and objects to test that an
+                // empty ReadRequestTupleKey does not filter for anything.
+                client
+                    .write(
+                        vec![
+                            TupleKey {
+                                user: format!("user:user{i}"),
+                                relation: "member".to_string(),
+                                object: "team:team1".to_string(),
+                                condition: None,
+                            },
+                            TupleKey {
+                                user: format!("role:role{i}#assignee"),
+                                relation: "role_assigner".to_string(),
+                                object: "org:org1".to_string(),
+                                condition: None,
+                            },
+                            TupleKey {
+                                user: format!("org:org{i}"),
+                                relation: "org".to_string(),
+                                object: "asset-category:ac{i}".to_string(),
+                                condition: None,
+                            },
+                        ],
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            let tuples = client
+                .read_all_pages(None::<ReadRequestTupleKey>, 50, u32::MAX)
+                .await
+                .unwrap();
+            assert_eq!(tuples.len(), loop_count * tuples_per_loop);
+        }
+
         #[tokio::test]
         #[traced_test]
         async fn test_delete_relations_to_object() {
