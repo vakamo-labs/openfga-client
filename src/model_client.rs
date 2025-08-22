@@ -267,7 +267,7 @@ where
     ///
     pub async fn read_all_pages(
         &self,
-        tuple: impl Into<ReadRequestTupleKey>,
+        tuple: Option<impl Into<ReadRequestTupleKey>>,
         page_size: i32,
         max_pages: u32,
     ) -> Result<Vec<Tuple>> {
