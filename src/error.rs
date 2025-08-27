@@ -13,7 +13,8 @@ pub enum Error {
     #[error("Request to OpenFGA failed with status: {0}")]
     RequestFailed(tonic::Status),
     #[error(
-        "Too many pages returned for read request tuple key {tuple:?}. Max pages: {max_pages}"
+        "Too many pages returned for read request tuple key {}. Max pages: {max_pages}",
+        tuple.as_ref().map_or_else(|| "<No tuple key provided>".to_string(), |t| format!("{t}"))
     )]
     TooManyPages {
         max_pages: u32,
