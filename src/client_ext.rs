@@ -192,21 +192,21 @@ where
     pub async fn read_all_pages(
         &mut self,
         store_id: &str,
-        tuple: impl Into<ReadRequestTupleKey>,
+        tuple: Option<impl Into<ReadRequestTupleKey>>,
         consistency: impl Into<ConsistencyPreference>,
         page_size: i32,
         max_pages: u32,
     ) -> Result<Vec<Tuple>> {
         let mut continuation_token = String::new();
+        let tuple = tuple.map(Into::into);
         let mut tuples = Vec::new();
         let mut count = 0;
-        let tuple = tuple.into();
         let consistency = consistency.into();
 
         loop {
             let read_request = ReadRequest {
                 store_id: store_id.to_owned(),
-                tuple_key: Some(tuple.clone()),
+                tuple_key: tuple.clone(),
                 page_size: Some(page_size),
                 continuation_token: continuation_token.clone(),
                 consistency: consistency.into(),
@@ -395,11 +395,11 @@ pub(crate) mod test {
             let tuples = client
                 .read_all_pages(
                     &store.id,
-                    ReadRequestTupleKey {
+                    Some(ReadRequestTupleKey {
                         user: String::new(),
                         relation: "member".to_string(),
                         object: object.to_string(),
-                    },
+                    }),
                     ConsistencyPreference::HigherConsistency,
                     100,
                     6,
@@ -423,11 +423,11 @@ pub(crate) mod test {
             let tuples = client
                 .read_all_pages(
                     &store.id,
-                    ReadRequestTupleKey {
+                    Some(ReadRequestTupleKey {
                         user: String::new(),
                         relation: "member".to_string(),
                         object: "organization:org-1".to_string(),
-                    },
+                    }),
                     ConsistencyPreference::HigherConsistency,
                     100,
                     5,
