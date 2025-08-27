@@ -338,11 +338,11 @@ where
             .client
             .read_all_pages(
                 &store.id,
-                ReadRequestTupleKey {
+                Some(ReadRequestTupleKey {
                     user: String::new(),
                     relation: Self::MODEL_VERSION_OPENFGA_ID_RELATION.to_string(),
                     object: Self::format_model_version_key(&self.model_prefix, version),
-                },
+                }),
                 ConsistencyPreference::HigherConsistency,
                 DEFAULT_PAGE_SIZE,
                 MAX_PAGES,
@@ -483,11 +483,11 @@ where
             .client
             .read_all_pages(
                 &store.id,
-                ReadRequestTupleKey {
+                Some(ReadRequestTupleKey {
                     user: format!("{}:*", Self::AUTH_MODEL_ID_TYPE).to_string(),
                     relation: Self::MODEL_VERSION_EXISTS_RELATION.to_string(),
                     object: format!("{}:", Self::MODEL_VERSION_TYPE).to_string(),
-                },
+                }),
                 crate::client::ConsistencyPreference::HigherConsistency,
                 DEFAULT_PAGE_SIZE,
                 MAX_PAGES,
