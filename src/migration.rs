@@ -275,7 +275,7 @@ where
                 .await
                 .map_err(|e| {
                     tracing::error!("Error writing model: {:?}", e);
-                    Error::RequestFailed(e)
+                    Error::RequestFailed(Box::new(e))
                 })?;
             tracing::debug!("Model written: {:?}", written_model);
 
@@ -433,7 +433,7 @@ where
         };
         client.write(write_request.clone()).await.map_err(|e| {
             tracing::error!("Error marking model as applied: {:?}", e);
-            Error::RequestFailed(e)
+            Error::RequestFailed(Box::new(e))
         })?;
         Ok(())
     }
@@ -917,9 +917,8 @@ pub(crate) mod test {
         let mut counter = state.counter_1.lock().unwrap();
         *counter += 1;
         if *counter == 2 {
-            return Err(Box::new(Error::RequestFailed(tonic::Status::new(
-                tonic::Code::Internal,
-                "Test",
+            return Err(Box::new(Error::RequestFailed(Box::new(
+                tonic::Status::new(tonic::Code::Internal, "Test"),
             ))));
         }
         Ok(())
@@ -937,9 +936,8 @@ pub(crate) mod test {
         let mut counter = state.counter_2.lock().unwrap();
         *counter += 1;
         if *counter == 2 {
-            return Err(Box::new(Error::RequestFailed(tonic::Status::new(
-                tonic::Code::Internal,
-                "Test",
+            return Err(Box::new(Error::RequestFailed(Box::new(
+                tonic::Status::new(tonic::Code::Internal, "Test"),
             ))));
         }
         Ok(())

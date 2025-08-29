@@ -11,7 +11,7 @@ pub enum Error {
     #[error("Multiple stores with the name `{0}` found")]
     AmbiguousStoreName(String),
     #[error("Request to OpenFGA failed with status: {0}")]
-    RequestFailed(tonic::Status),
+    RequestFailed(Box<tonic::Status>),
     #[error(
         "Too many pages returned for read request tuple key {}. Max pages: {max_pages}",
         tuple.as_ref().map_or_else(|| "<No tuple key provided>".to_string(), |t| format!("{t}"))

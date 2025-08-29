@@ -220,7 +220,7 @@ where
                 tracing::error!(
                     "Write request failed with status {e}. Request: {write_request_debug}"
                 );
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })
             .map(|_| ())
     }
@@ -255,7 +255,7 @@ where
                 tracing::error!(
                     "Read request failed with status {e}. Request: {read_request_debug}"
                 );
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })
     }
 
@@ -316,7 +316,7 @@ where
                 tracing::error!(
                     "Check request failed with status {e}. Request: {check_request_debug}"
                 );
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })?;
         Ok(response.get_ref().allowed)
     }
@@ -353,7 +353,7 @@ where
                 tracing::error!(
                     "Batch-Check request failed with status {e}. Request: {request_debug}"
                 );
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })?;
 
         let mut map = HashMap::new();
@@ -398,7 +398,7 @@ where
                 tracing::error!(
                     "Expand request failed with status {e}. Request: {expand_request:?}"
                 );
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })?;
         Ok(response.into_inner().tree)
     }
@@ -444,7 +444,7 @@ where
                 tracing::error!(
                     "List-Objects request failed with status {e}. Request: {request:?}"
                 );
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })
     }
 
