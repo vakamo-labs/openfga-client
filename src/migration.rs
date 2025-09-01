@@ -92,7 +92,8 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// 4) The (user defined) state passed into the migration function
 ///
 /// Authorization model ids may be undefined (`None`), e.g. for the pre hook of the first
-/// migration neither a previous nor a current model exist.
+/// migration neither a previous nor a current model exist. For the first migration run by
+/// [`TupleModelManager::migrate`], the previous model id is always `None`.
 pub type MigrationFn<T, S> = fn(
     OpenFgaServiceClient<T>,
     Option<String>,
@@ -216,20 +217,16 @@ where
         }
 
         let store = self.client.get_or_create_store(&self.store_name).await?;
-        let mut existing_models_ordered = self.get_existing_versions().await?;
-        existing_models_ordered.sort();
-        let max_existing_model = existing_models_ordered.pop();
-
+        let existing_models = self.get_existing_versions().await?;
+        let max_existing_model = existing_models.iter().max().copied();
         let mut curr_model_id = if let Some(version) = max_existing_model {
             Some(self.require_authorization_model_id(version).await?)
         } else {
             None
         };
-        let mut prev_model_id = if let Some(version) = existing_models_ordered.pop() {
-            Some(self.require_authorization_model_id(version).await?)
-        } else {
-            None
-        };
+        // At this point the previous model id cannot be determined reliably, e.g. because
+        // migrations might have been run out of order.
+        let mut prev_model_id = None;
 
         if let Some(max_existing_model) = max_existing_model {
             tracing::info!(
