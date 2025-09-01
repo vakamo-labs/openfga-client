@@ -56,7 +56,7 @@ struct VersionedAuthorizationModel {
 /// ```
 ///
 #[derive(Debug, Clone)]
-pub struct TupleModelManager<T>
+pub struct TupleModelManager<T, S>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody>,
     T::Error: Into<StdError>,
@@ -66,46 +66,73 @@ where
     client: OpenFgaServiceClient<T>,
     store_name: String,
     model_prefix: String,
-    migrations: HashMap<AuthorizationModelVersion, Migration<T>>,
+    migrations: HashMap<AuthorizationModelVersion, Migration<T, S>>,
 }
 
 #[derive(Clone)]
-struct Migration<T> {
+struct Migration<T, S> {
+    /// The model being migrated to.
+    ///
+    /// If this has value `vX`, the active model *after* the migration will be `vX`.
     model: VersionedAuthorizationModel,
-    pre_migration_fn: Option<BoxedMigrationFn<T>>,
-    post_migration_fn: Option<BoxedMigrationFn<T>>,
+    pre_migration_fn: Option<BoxedMigrationFn<T, S>>,
+    post_migration_fn: Option<BoxedMigrationFn<T, S>>,
 }
 
 // Define a type alias for a boxed future with a specific lifetime
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Possible function pointer that implements the migration function signature.
-pub type MigrationFn<T> =
-    fn(OpenFgaServiceClient<T>) -> BoxFuture<'static, std::result::Result<(), StdError>>;
+///
+/// The arguments are:
+///
+/// 1) A client connected to endpoint that's being migrated
+/// 2) The id of the authorization model active prior to the invocation of the function
+/// 3) The id of the authorization model active when the function is invoked
+/// 4) The (user defined) state passed into the migration function
+///
+/// Authorization model ids may be undefined (`None`), e.g. for the pre hook of the first
+/// migration neither a previous nor a current model exist. For the first migration run by
+/// [`TupleModelManager::migrate`], the previous model id is always `None`.
+pub type MigrationFn<T, S> = fn(
+    OpenFgaServiceClient<T>,
+    Option<String>,
+    Option<String>,
+    S,
+) -> BoxFuture<'static, std::result::Result<(), StdError>>;
 
 /// Type alias for the migration function signature.
-type DynMigrationFn<T> =
-    dyn Fn(OpenFgaServiceClient<T>) -> BoxFuture<'static, std::result::Result<(), StdError>>;
+type DynMigrationFn<T, S> = dyn Fn(
+    OpenFgaServiceClient<T>,
+    Option<String>,
+    Option<String>,
+    S,
+) -> BoxFuture<'static, std::result::Result<(), StdError>>;
 
 /// Boxed migration function
-type BoxedMigrationFn<T> = Arc<DynMigrationFn<T>>;
+type BoxedMigrationFn<T, S> = Arc<DynMigrationFn<T, S>>;
 
 // Function to box the async functions that take an i32 parameter
-fn box_migration_fn<T, F, Fut>(f: F) -> BoxedMigrationFn<T>
+fn box_migration_fn<T, S, F, Fut>(f: F) -> BoxedMigrationFn<T, S>
 where
-    F: Fn(OpenFgaServiceClient<T>) -> Fut + Send + 'static,
+    F: Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> Fut + Send + 'static,
     Fut: Future<Output = std::result::Result<(), StdError>> + Send + 'static,
 {
-    Arc::new(move |v| Box::pin(f(v)))
+    Arc::new(
+        move |client, prev_auth_model_id, active_auth_model_id, state| {
+            Box::pin(f(client, prev_auth_model_id, active_auth_model_id, state))
+        },
+    )
 }
 
-impl<T> TupleModelManager<T>
+impl<T, S> TupleModelManager<T, S>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody>,
     T: Clone,
     T::Error: Into<StdError>,
     T::ResponseBody: Body<Data = Bytes> + Send + 'static,
     <T::ResponseBody as Body>::Error: Into<StdError> + Send,
+    S: Clone,
 {
     const AUTH_MODEL_ID_TYPE: &'static str = "auth_model_id";
     const MODEL_VERSION_EXISTS_RELATION: &'static str = "exists";
@@ -136,8 +163,16 @@ where
         mut self,
         model: AuthorizationModel,
         version: AuthorizationModelVersion,
-        pre_migration_fn: Option<impl Fn(OpenFgaServiceClient<T>) -> FutPre + Send + 'static>,
-        post_migration_fn: Option<impl Fn(OpenFgaServiceClient<T>) -> FutPost + Send + 'static>,
+        pre_migration_fn: Option<
+            impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPre
+                + Send
+                + 'static,
+        >,
+        post_migration_fn: Option<
+            impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPost
+                + Send
+                + 'static,
+        >,
     ) -> Self
     where
         FutPre: Future<Output = std::result::Result<(), StdError>> + Send + 'static,
@@ -166,7 +201,8 @@ where
     /// # Errors
     /// * If OpenFGA cannot be reached or a request fails.
     /// * If any of the migration hooks fail.
-    pub async fn migrate(&mut self) -> Result<()> {
+    #[allow(clippy::too_many_lines)]
+    pub async fn migrate(&mut self, state: S) -> Result<()> {
         let span = tracing::span!(
             tracing::Level::INFO,
             "Running OpenFGA Migrations",
@@ -182,7 +218,15 @@ where
 
         let store = self.client.get_or_create_store(&self.store_name).await?;
         let existing_models = self.get_existing_versions().await?;
-        let max_existing_model = existing_models.iter().max();
+        let max_existing_model = existing_models.iter().max().copied();
+        let mut curr_model_id = if let Some(version) = max_existing_model {
+            Some(self.require_authorization_model_id(version).await?)
+        } else {
+            None
+        };
+        // At this point the previous model id cannot be determined reliably, e.g. because
+        // migrations might have been run out of order.
+        let mut prev_model_id = None;
 
         if let Some(max_existing_model) = max_existing_model {
             tracing::info!(
@@ -193,7 +237,7 @@ where
             tracing::info!("No model found in OpenFGA store");
         }
 
-        let ordered_migrations = self.migrations_to_perform(max_existing_model.copied());
+        let ordered_migrations = self.migrations_to_perform(max_existing_model);
 
         let mut client = self.client.clone();
         for migration in ordered_migrations {
@@ -201,7 +245,14 @@ where
 
             // Pre-hook
             if let Some(pre_migration_fn) = migration.pre_migration_fn.as_ref() {
-                pre_migration_fn(client.clone()).await.map_err(|e| {
+                pre_migration_fn(
+                    client.clone(),
+                    prev_model_id.clone(),
+                    curr_model_id.clone(),
+                    state.clone(),
+                )
+                .await
+                .map_err(|e| {
                     tracing::error!("Error in OpenFGA pre-migration hook: {:?}", e);
                     Error::MigrationHookFailed {
                         version: migration.model.version().to_string(),
@@ -221,13 +272,24 @@ where
                 .await
                 .map_err(|e| {
                     tracing::error!("Error writing model: {:?}", e);
-                    Error::RequestFailed(e)
+                    Error::RequestFailed(Box::new(e))
                 })?;
             tracing::debug!("Model written: {:?}", written_model);
 
+            // Update model versions passed to migration hooks.
+            prev_model_id.clone_from(&curr_model_id);
+            curr_model_id = Some(written_model.get_ref().authorization_model_id.to_string());
+
             // Post-hook
             if let Some(post_migration_fn) = migration.post_migration_fn.as_ref() {
-                post_migration_fn(client.clone()).await.map_err(|e| {
+                post_migration_fn(
+                    client.clone(),
+                    prev_model_id.clone(),
+                    curr_model_id.clone(),
+                    state.clone(),
+                )
+                .await
+                .map_err(|e| {
                     tracing::error!("Error in OpenFGA post-migration hook: {:?}", e);
                     Error::MigrationHookFailed {
                         version: migration.model.version().to_string(),
@@ -317,6 +379,23 @@ where
         Ok(model_id)
     }
 
+    /// Helper method that tries to get the authorization model id for `version` and returns
+    /// an error if the id cannot be found.
+    async fn require_authorization_model_id(
+        &mut self,
+        version: AuthorizationModelVersion,
+    ) -> Result<String> {
+        self.get_authorization_model_id(version)
+            .await?
+            .ok_or_else(|| {
+                tracing::error!("Missing authorization model id for model version {version}");
+                Error::MissingAuthorizationModelId {
+                    model_prefix: self.model_prefix.clone(),
+                    version: version.to_string(),
+                }
+            })
+    }
+
     /// Mark a model version as applied in OpenFGA
     async fn mark_as_applied(
         client: &mut OpenFgaServiceClient<T>,
@@ -351,14 +430,14 @@ where
         };
         client.write(write_request.clone()).await.map_err(|e| {
             tracing::error!("Error marking model as applied: {:?}", e);
-            Error::RequestFailed(e)
+            Error::RequestFailed(Box::new(e))
         })?;
         Ok(())
     }
 
     /// Get all migrations that have been added to the manager
     /// as a `Vec` sorted by the version of the model.
-    fn ordered_migrations(&self) -> Vec<&Migration<T>> {
+    fn ordered_migrations(&self) -> Vec<&Migration<T, S>> {
         let mut migrations = self.migrations.values().collect::<Vec<_>>();
         migrations.sort_unstable_by_key(|m| m.model.version());
         migrations
@@ -368,7 +447,7 @@ where
     fn migrations_to_perform(
         &self,
         max_existing_model: Option<AuthorizationModelVersion>,
-    ) -> Vec<&Migration<T>> {
+    ) -> Vec<&Migration<T, S>> {
         let ordered_migrations = self.ordered_migrations();
         let migrations_to_perform = ordered_migrations
             .into_iter()
@@ -515,7 +594,7 @@ impl FromStr for AuthorizationModelVersion {
     }
 }
 
-impl<T> std::fmt::Debug for Migration<T> {
+impl<T, S> std::fmt::Debug for Migration<T, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Migration")
             .field("model", &self.model)
@@ -534,7 +613,7 @@ pub(crate) mod test {
 
     use super::*;
 
-    type ChannelTupleManager = TupleModelManager<tonic::transport::Channel>;
+    type ChannelTupleManager = TupleModelManager<tonic::transport::Channel, ()>;
 
     #[test]
     fn test_ordering() {
@@ -610,7 +689,7 @@ pub(crate) mod test {
 
     #[needs_env_var(TEST_OPENFGA_CLIENT_GRPC_URL)]
     pub(crate) mod openfga {
-        use std::{str::FromStr, sync::Mutex};
+        use std::str::FromStr;
 
         use pretty_assertions::assert_eq;
 
@@ -637,7 +716,8 @@ pub(crate) mod test {
         #[tokio::test]
         async fn test_get_existing_versions_nonexistent_store() {
             let client = get_service_client().await;
-            let mut manager = TupleModelManager::new(client, "nonexistent", "test");
+            let mut manager: TupleModelManager<_, ()> =
+                TupleModelManager::new(client, "nonexistent", "test");
 
             let versions = manager.get_existing_versions().await.unwrap();
             assert!(versions.is_empty());
@@ -648,7 +728,8 @@ pub(crate) mod test {
             let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let _store = client.get_or_create_store(&store_name).await.unwrap();
-            let mut manager = TupleModelManager::new(client, &store_name, "test");
+            let mut manager: TupleModelManager<_, ()> =
+                TupleModelManager::new(client, &store_name, "test");
             let versions = manager.get_existing_versions().await.unwrap();
             assert!(versions.is_empty());
         }
@@ -659,7 +740,8 @@ pub(crate) mod test {
             let model_prefix = "test";
             let version = AuthorizationModelVersion::new(1, 0);
 
-            let mut manager = TupleModelManager::new(client.clone(), &store.name, model_prefix);
+            let mut manager: TupleModelManager<_, ()> =
+                TupleModelManager::new(client.clone(), &store.name, model_prefix);
 
             // Non-existent model
             assert_eq!(
@@ -725,25 +807,21 @@ pub(crate) mod test {
                     .unwrap();
 
             let version_1_0 = AuthorizationModelVersion::new(1, 0);
-            let execution_counter_1 = Arc::new(Mutex::new(0));
 
-            let execution_counter_clone = execution_counter_1.clone();
+            let migration_state = MigrationState::default();
             let mut manager = TupleModelManager::new(client.clone(), &store_name, "test-model")
                 .add_model(
                     model_1_0.clone(),
                     version_1_0,
-                    Some(move |client| {
-                        let counter = execution_counter_clone.clone();
-                        async move { v1_pre_migration_fn(client, counter).await }
-                    }),
-                    None::<MigrationFn<_>>,
+                    Some(v1_pre_migration_fn),
+                    None::<MigrationFn<_, _>>,
                 );
-            manager.migrate().await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
             // Check hook was called once
-            assert_eq!(*execution_counter_1.lock().unwrap(), 1);
-            manager.migrate().await.unwrap();
+            assert_eq!(*migration_state.counter_1.lock().unwrap(), 1);
+            manager.migrate(migration_state.clone()).await.unwrap();
             // Check hook was not called again
-            assert_eq!(*execution_counter_1.lock().unwrap(), 1);
+            assert_eq!(*migration_state.counter_1.lock().unwrap(), 1);
 
             // Check written model
             let auth_model_id = manager
@@ -764,25 +842,20 @@ pub(crate) mod test {
                 serde_json::from_str(include_str!("../tests/model-manager/v1.1/schema.json"))
                     .unwrap();
             let version_1_1 = AuthorizationModelVersion::new(1, 1);
-            let execution_counter_2 = Arc::new(Mutex::new(0));
-            let execution_counter_clone = execution_counter_2.clone();
             let mut manager = manager.add_model(
                 model_1_1.clone(),
                 version_1_1,
-                None::<MigrationFn<_>>,
-                Some(move |client| {
-                    let counter = execution_counter_clone.clone();
-                    async move { v2_post_migration_fn(client, counter).await }
-                }),
+                None::<MigrationFn<_, _>>,
+                Some(v2_post_migration_fn),
             );
-            manager.migrate().await.unwrap();
-            manager.migrate().await.unwrap();
-            manager.migrate().await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
+            manager.migrate(migration_state.clone()).await.unwrap();
 
             // First migration still only called once
-            assert_eq!(*execution_counter_1.lock().unwrap(), 1);
+            assert_eq!(*migration_state.counter_1.lock().unwrap(), 1);
             // Second migration called once
-            assert_eq!(*execution_counter_2.lock().unwrap(), 1);
+            assert_eq!(*migration_state.counter_2.lock().unwrap(), 1);
 
             // Check written model
             let auth_model_id = manager
@@ -823,19 +896,26 @@ pub(crate) mod test {
         }
     }
 
+    #[derive(Default, Clone)]
+    struct MigrationState {
+        counter_1: Arc<Mutex<i32>>,
+        counter_2: Arc<Mutex<i32>>,
+    }
+
     #[allow(clippy::unused_async)]
     async fn v1_pre_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
-        counter_mutex: Arc<Mutex<i32>>,
+        _prev_model: Option<String>,
+        _curr_model: Option<String>,
+        state: MigrationState,
     ) -> std::result::Result<(), StdError> {
         let _ = client;
         // Throw an error for the second call
-        let mut counter = counter_mutex.lock().unwrap();
+        let mut counter = state.counter_1.lock().unwrap();
         *counter += 1;
         if *counter == 2 {
-            return Err(Box::new(Error::RequestFailed(tonic::Status::new(
-                tonic::Code::Internal,
-                "Test",
+            return Err(Box::new(Error::RequestFailed(Box::new(
+                tonic::Status::new(tonic::Code::Internal, "Test"),
             ))));
         }
         Ok(())
@@ -844,16 +924,17 @@ pub(crate) mod test {
     #[allow(clippy::unused_async)]
     async fn v2_post_migration_fn(
         client: OpenFgaServiceClient<tonic::transport::Channel>,
-        counter_mutex: Arc<Mutex<i32>>,
+        _prev_model: Option<String>,
+        _curr_model: Option<String>,
+        state: MigrationState,
     ) -> std::result::Result<(), StdError> {
         let _ = client;
         // Throw an error for the second call
-        let mut counter = counter_mutex.lock().unwrap();
+        let mut counter = state.counter_2.lock().unwrap();
         *counter += 1;
         if *counter == 2 {
-            return Err(Box::new(Error::RequestFailed(tonic::Status::new(
-                tonic::Code::Internal,
-                "Test",
+            return Err(Box::new(Error::RequestFailed(Box::new(
+                tonic::Status::new(tonic::Code::Internal, "Test"),
             ))));
         }
         Ok(())

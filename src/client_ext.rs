@@ -133,7 +133,7 @@ where
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list stores in OpenFGA: {e}");
-                Error::RequestFailed(e)
+                Error::RequestFailed(Box::new(e))
             })?
             .into_inner();
         let num_stores = stores.stores.len();
@@ -169,7 +169,7 @@ where
                     .await
                     .map_err(|e| {
                         tracing::error!("Failed to create store in OpenFGA: {e}");
-                        Error::RequestFailed(e)
+                        Error::RequestFailed(Box::new(e))
                     })?
                     .into_inner();
                 Ok(Store {
@@ -219,7 +219,7 @@ where
                         "Failed to read from OpenFGA: {e}. Request: {:?}",
                         read_request
                     );
-                    Error::RequestFailed(e)
+                    Error::RequestFailed(Box::new(e))
                 })?
                 .into_inner();
             tuples.extend(response.tuples);
