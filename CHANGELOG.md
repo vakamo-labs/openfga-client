@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/vakamo-labs/openfga-client/compare/v0.3.0...v0.4.0) - 2025-09-23
+
+### Added
+
+- [**breaking**] pass more data into `MigrationFn` ([#16](https://github.com/vakamo-labs/openfga-client/pull/16))
+
+### Fixed
+
+- Remove protoc-gen-prost submodule
+- [**breaking**] `read_all_pages` now correctly reads all tuples without filters ([#19](https://github.com/vakamo-labs/openfga-client/pull/19))
+
+### Other
+
+- *(deps)* update prost-types requirement from 0.13 to 0.14 ([#13](https://github.com/vakamo-labs/openfga-client/pull/13))
+- *(deps)* bump actions/checkout from 4 to 5 ([#18](https://github.com/vakamo-labs/openfga-client/pull/18))
+
 ## [0.3.0](https://github.com/vakamo-labs/openfga-client/compare/v0.2.0...v0.3.0) - 2025-06-27
 
 ### Added
