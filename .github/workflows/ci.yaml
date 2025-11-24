@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: sudo snap install --edge --classic just
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install Rust ${{ env.rust_nightly }}
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: sudo snap install --edge --classic just
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
       - name: Install Rust ${{ env.rust_toolchain }}
@@ -79,7 +79,7 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install Rust ${{ env.rust_nightly }}
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: sudo snap install --edge --classic just
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install Rust ${{ env.rust_stable }}
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: sudo snap install --edge --classic just
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Install Rust ${{ env.rust_min }}
         uses: dtolnay/rust-toolchain@stable
         with:
