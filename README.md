@@ -13,7 +13,25 @@ OpenFGA Rust Client is a type-safe gRPC client for OpenFGA with optional Authori
 * Uses `vendored-protoc` for well-known types - Rust files are pre-generated.
 * Optional Authorization Model management with Migration hooks. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without re-writing of Authorization Models on startup.
 * Optional Authentication (Bearer or Client Credentials) via the [Middle Crate](https://crates.io/crates/middle). (Feature: `auth-middle`)
+* Optional TLS support for secure HTTPS connections (Features: `tls-rustls`, `tls-native-roots`, `tls-webpki-roots`)
 * Convenience functions like `read_all_tuples` (handles pagination), `get_store_by_name` and more.
+
+## TLS Support
+
+To connect to OpenFGA servers over HTTPS, enable the TLS feature flags:
+
+```toml
+[dependencies]
+openfga-client = { version = "0.4", features = ["tls-rustls", "tls-native-roots"] }
+```
+
+Available TLS features:
+- `tls-rustls`: Enables TLS support using rustls
+- `tls-native-roots`: Uses the platform's native certificate store
+- `tls-webpki-roots`: Uses Mozilla's root certificates (bundled)
+- `all`: Enables all features including TLS with native roots
+
+When TLS is enabled, HTTPS endpoints are automatically configured with TLS.
 
 # Usage
 

@@ -259,10 +259,37 @@ type EitherOrOption = Option<
 
 #[cfg(feature = "auth-middle")]
 fn get_tonic_endpoint_logged(endpoint: &url::Url) -> Result<Endpoint> {
-    Endpoint::new(endpoint.to_string()).map_err(|e| {
+    let ep = Endpoint::new(endpoint.to_string()).map_err(|e| {
         tracing::error!("Could not construct OpenFGA client. Invalid endpoint `{endpoint}`: {e}");
         Error::InvalidEndpoint(endpoint.to_string())
-    })
+    })?;
+
+    // Configure TLS if the endpoint uses HTTPS
+    if endpoint.scheme() == "https" {
+        #[cfg(feature = "tls-rustls")]
+        {
+            use tonic::transport::ClientTlsConfig;
+            let tls_config = ClientTlsConfig::new().with_enabled_roots();
+            return ep.tls_config(tls_config).map_err(|e| {
+                tracing::error!(
+                    "Could not configure TLS for OpenFGA client endpoint `{endpoint}`: {e}"
+                );
+                Error::TlsConfigurationFailed {
+                    endpoint: endpoint.to_string(),
+                    reason: e.to_string(),
+                }
+            });
+        }
+        #[cfg(not(feature = "tls-rustls"))]
+        {
+            tracing::warn!(
+                "HTTPS endpoint `{endpoint}` specified but TLS support is not enabled. \
+                 Enable the `tls-rustls` feature to use HTTPS endpoints."
+            );
+        }
+    }
+
+    Ok(ep)
 }
 
 #[cfg(test)]
