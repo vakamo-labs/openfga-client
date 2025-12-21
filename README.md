@@ -29,7 +29,7 @@ Available TLS features:
 - `tls-rustls`: Enables TLS support using rustls
 - `tls-native-roots`: Uses the platform's native certificate store
 - `tls-webpki-roots`: Uses Mozilla's root certificates (bundled)
-- `all`: Enables all features including TLS with native roots
+- `all`: Enables `tls-rustls`, `tls-native-roots`, and `auth-middle` (does not include `tls-webpki-roots`)
 
 When TLS is enabled, HTTPS endpoints are automatically configured with TLS.
 

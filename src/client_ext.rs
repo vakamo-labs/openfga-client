@@ -282,10 +282,11 @@ fn get_tonic_endpoint_logged(endpoint: &url::Url) -> Result<Endpoint> {
         }
         #[cfg(not(feature = "tls-rustls"))]
         {
-            tracing::warn!(
-                "HTTPS endpoint `{endpoint}` specified but TLS support is not enabled. \
-                 Enable the `tls-rustls` feature to use HTTPS endpoints."
-            );
+            return Err(Error::TlsConfigurationFailed {
+                endpoint: endpoint.to_string(),
+                reason: "HTTPS endpoint requires the `tls-rustls` feature to be enabled"
+                    .to_string(),
+            });
         }
     }
 
