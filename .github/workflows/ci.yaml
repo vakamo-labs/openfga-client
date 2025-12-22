@@ -14,11 +14,10 @@ env:
   RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
   RUSTUP_WINDOWS_PATH_ADD_BIN: 1
-  # Change to specific Rust release to pin
   rust_stable: stable
   rust_nightly: nightly-2025-01-25
-  rust_toolchain: '1.86'
-  rust_min: '1.82'
+  rust_toolchain: '1.92'
+  rust_min: '1.83'
 
 defaults:
   run:
