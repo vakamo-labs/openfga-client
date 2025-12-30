@@ -4,16 +4,17 @@ use std::{
 };
 
 use async_stream::stream;
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use tonic::codegen::{Body, Bytes, StdError};
 
 use crate::{
     client::{
-        batch_check_single_result::CheckResult, BatchCheckItem, BatchCheckRequest, CheckRequest,
-        CheckRequestTupleKey, ConsistencyPreference, ContextualTupleKeys, ExpandRequest,
-        ExpandRequestTupleKey, ListObjectsRequest, ListObjectsResponse, OpenFgaServiceClient,
-        ReadRequest, ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition,
-        UsersetTree, WriteRequest, WriteRequestDeletes, WriteRequestWrites,
+        BatchCheckItem, BatchCheckRequest, CheckRequest, CheckRequestTupleKey,
+        ConsistencyPreference, ContextualTupleKeys, ExpandRequest, ExpandRequestTupleKey,
+        ListObjectsRequest, ListObjectsResponse, OpenFgaServiceClient, ReadRequest,
+        ReadRequestTupleKey, ReadResponse, Tuple, TupleKey, TupleKeyWithoutCondition, UsersetTree,
+        WriteRequest, WriteRequestDeletes, WriteRequestWrites,
+        batch_check_single_result::CheckResult,
     },
     error::{Error, Result},
 };
@@ -468,7 +469,9 @@ where
                 })?;
 
             if self.exists_relation_to(object).await? {
-                tracing::debug!("Some tuples for object {object} are still present after first sweep. Performing another deletion.");
+                tracing::debug!(
+                    "Some tuples for object {object} are still present after first sweep. Performing another deletion."
+                );
             } else {
                 tracing::debug!("Successfully deleted all relations to object {object}");
                 break Ok(());
@@ -602,8 +605,8 @@ mod tests {
         async fn get_client_with_custom_roles_model() -> OpenFgaClient<tonic::transport::Channel> {
             let (service_client, store) = service_client_with_store().await;
             let auth_model_id = write_custom_roles_model(&service_client, &store).await;
-            let client = OpenFgaClient::new(service_client, &store.id, auth_model_id.as_str());
-            client
+
+            OpenFgaClient::new(service_client, &store.id, auth_model_id.as_str())
         }
 
         /// Verifies that all pages are read when *not* passing a `ReadRequestTupleKey`.
@@ -766,14 +769,16 @@ mod tests {
 
             assert!(!client.exists_relation_to(object).await.unwrap());
             assert!(client.exists_relation_to(object_2).await.unwrap());
-            assert!(client
-                .check_simple(TupleKeyWithoutCondition {
-                    user: "user:user1".to_string(),
-                    relation: "role_assigner".to_string(),
-                    object: object_2.to_string(),
-                })
-                .await
-                .unwrap());
+            assert!(
+                client
+                    .check_simple(TupleKeyWithoutCondition {
+                        user: "user:user1".to_string(),
+                        relation: "role_assigner".to_string(),
+                        object: object_2.to_string(),
+                    })
+                    .await
+                    .unwrap()
+            );
         }
     }
 }
