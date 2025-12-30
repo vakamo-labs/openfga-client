@@ -61,6 +61,8 @@ pub enum Error {
     /// [ref]: https://github.com/tokio-rs/prost?tab=readme-ov-file#oneof-fields
     #[error("Expected Oneof variant but got None")]
     ExpectedOneof,
+    #[error("TLS configuration failed for endpoint `{endpoint}`: {reason}")]
+    TlsConfigurationFailed { endpoint: String, reason: String },
 }
 
 impl Error {
