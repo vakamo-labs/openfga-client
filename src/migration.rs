@@ -165,13 +165,13 @@ where
         version: AuthorizationModelVersion,
         pre_migration_fn: Option<
             impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPre
-                + Send
-                + 'static,
+            + Send
+            + 'static,
         >,
         post_migration_fn: Option<
             impl Fn(OpenFgaServiceClient<T>, Option<String>, Option<String>, S) -> FutPost
-                + Send
-                + 'static,
+            + Send
+            + 'static,
         >,
     ) -> Self
     where
@@ -278,7 +278,7 @@ where
 
             // Update model versions passed to migration hooks.
             prev_model_id.clone_from(&curr_model_id);
-            curr_model_id = Some(written_model.get_ref().authorization_model_id.to_string());
+            curr_model_id = Some(written_model.get_ref().authorization_model_id.clone());
 
             // Post-hook
             if let Some(post_migration_fn) = migration.post_migration_fn.as_ref() {
@@ -426,7 +426,7 @@ where
                 ],
             }),
             deletes: None,
-            authorization_model_id: authorization_model_id.to_string(),
+            authorization_model_id: authorization_model_id.clone(),
         };
         client.write(write_request.clone()).await.map_err(|e| {
             tracing::error!("Error marking model as applied: {:?}", e);
@@ -654,18 +654,19 @@ pub(crate) mod test {
         );
 
         // Prefix missing
-        assert!(ChannelTupleManager::parse_model_version_from_key(
-            "model_version:1.0",
-            model_prefix
-        )
-        .is_none());
+        assert!(
+            ChannelTupleManager::parse_model_version_from_key("model_version:1.0", model_prefix)
+                .is_none()
+        );
 
         // Wrong prefix
-        assert!(ChannelTupleManager::parse_model_version_from_key(
-            "model_version:foo-1.0",
-            model_prefix
-        )
-        .is_none());
+        assert!(
+            ChannelTupleManager::parse_model_version_from_key(
+                "model_version:foo-1.0",
+                model_prefix
+            )
+            .is_none()
+        );
 
         // Higher version
         assert_eq!(
@@ -705,8 +706,8 @@ pub(crate) mod test {
                 .expect("Client can be created")
         }
 
-        pub(crate) async fn service_client_with_store(
-        ) -> (OpenFgaServiceClient<tonic::transport::Channel>, Store) {
+        pub(crate) async fn service_client_with_store()
+        -> (OpenFgaServiceClient<tonic::transport::Channel>, Store) {
             let mut client = get_service_client().await;
             let store_name = format!("test-{}", uuid::Uuid::now_v7());
             let store = client.get_or_create_store(&store_name).await.unwrap();
