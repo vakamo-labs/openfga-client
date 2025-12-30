@@ -6,7 +6,7 @@ use tonic::{
     transport::{Channel, Endpoint},
 };
 #[cfg(feature = "auth-middle")]
-use tower::{util::Either, ServiceBuilder};
+use tower::{ServiceBuilder, util::Either};
 
 use crate::{
     client::{OpenFgaClient, OpenFgaServiceClient},
@@ -380,7 +380,7 @@ pub(crate) mod test {
                         store_id: store.id.clone(),
                         writes: Some(WriteRequestWrites {
                             tuple_keys: vec![TupleKey {
-                                user: user.to_string(),
+                                user: user.clone(),
                                 relation: "member".to_string(),
                                 object: object.to_string(),
                                 condition: None,

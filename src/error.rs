@@ -36,16 +36,16 @@ pub enum Error {
         version: String,
         error: Arc<StdError>,
     },
-    #[error(
-        "Missing authorization model id for model prefix `{model_prefix}` version `{version}`"
-    )]
+    #[error("Missing authorization model id for model prefix `{model_prefix}` version `{version}`")]
     MissingAuthorizationModelId {
         model_prefix: String,
         version: String,
     },
     #[error("Store with Name `{0}` not found")]
     StoreNotFound(String),
-    #[error("Multiple authorization models with model prefix `{model_prefix}` for version `{version}` found.")]
+    #[error(
+        "Multiple authorization models with model prefix `{model_prefix}` for version `{version}` found."
+    )]
     AmbiguousModelVersion {
         model_prefix: String,
         version: String,
