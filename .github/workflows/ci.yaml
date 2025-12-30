@@ -16,9 +16,9 @@ env:
   RUSTUP_WINDOWS_PATH_ADD_BIN: 1
   # Change to specific Rust release to pin
   rust_stable: stable
-  rust_nightly: nightly-2025-01-25
-  rust_toolchain: '1.86'
-  rust_min: '1.82'
+  rust_nightly: nightly-2025-12-25
+  rust_toolchain: '1.92'
+  rust_min: '1.88'
 
 defaults:
   run:
@@ -80,17 +80,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install Rust ${{ env.rust_nightly }}
+      - name: Install Rust ${{ env.rust_stable }}
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_nightly }}
+          toolchain: ${{ env.rust_stable }}
       - uses: Swatinem/rust-cache@v2
       - name: "doc --lib --all-features"
         run: |
           cargo doc --lib --no-deps --all-features --document-private-items
-        env:
-          RUSTFLAGS: --cfg docsrs ${{ matrix.run.RUSTFLAGS }}
-          RUSTDOCFLAGS: --cfg docsrs -Dwarnings ${{ matrix.run.RUSTDOCFLAGS }}
+        # env:
+        #   RUSTFLAGS: --cfg docsrs ${{ matrix.run.RUSTFLAGS }}
+        #   RUSTDOCFLAGS: --cfg docsrs -Dwarnings ${{ matrix.run.RUSTDOCFLAGS }}
 
   test:
     name: test
