@@ -1,6 +1,6 @@
 version: v1
 plugins:
-  - plugin: buf.build/community/neoeinstein-prost:v0.4.0
+  - plugin: buf.build/community/neoeinstein-prost:v0.5.0
     out: src/gen
     opt:
       - bytes=.
@@ -12,9 +12,9 @@ plugins:
       - extern_path=.google.protobuf.ListValue=::prost_wkt_types::ListValue
       - extern_path=.google.protobuf.Int32Value=i32
       - extern_path=.google.protobuf.Any=::prost_wkt_types::Any
-  - plugin: buf.build/community/neoeinstein-prost-serde:v0.3.1
+  - plugin: buf.build/community/neoeinstein-prost-serde:v0.4.0
     out: src/gen
-  - plugin: buf.build/community/neoeinstein-tonic:v0.4.1
+  - plugin: buf.build/community/neoeinstein-tonic:v0.5.0
     out: src/gen
     opt:
       - no_server

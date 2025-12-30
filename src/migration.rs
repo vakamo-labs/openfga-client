@@ -58,7 +58,7 @@ struct VersionedAuthorizationModel {
 #[derive(Debug, Clone)]
 pub struct TupleModelManager<T, S>
 where
-    T: tonic::client::GrpcService<tonic::body::BoxBody>,
+    T: tonic::client::GrpcService<tonic::body::Body>,
     T::Error: Into<StdError>,
     T::ResponseBody: Body<Data = Bytes> + Send + 'static,
     <T::ResponseBody as Body>::Error: Into<StdError> + Send,
@@ -127,7 +127,7 @@ where
 
 impl<T, S> TupleModelManager<T, S>
 where
-    T: tonic::client::GrpcService<tonic::body::BoxBody>,
+    T: tonic::client::GrpcService<tonic::body::Body>,
     T: Clone,
     T::Error: Into<StdError>,
     T::ResponseBody: Body<Data = Bytes> + Send + 'static,
@@ -410,6 +410,7 @@ where
         let write_request = WriteRequest {
             store_id: store.id.clone(),
             writes: Some(WriteRequestWrites {
+                on_duplicate: String::new(),
                 tuple_keys: vec![
                     TupleKey {
                         user: format!("{}:{authorization_model_id}", Self::AUTH_MODEL_ID_TYPE),
@@ -764,6 +765,7 @@ pub(crate) mod test {
                 .write(WriteRequest {
                     store_id: store.id.clone(),
                     writes: Some(WriteRequestWrites {
+                        on_duplicate: String::new(),
                         tuple_keys: vec![
                             TupleKey {
                                 user: "auth_model_id:111111".to_string(),

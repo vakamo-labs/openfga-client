@@ -193,7 +193,7 @@ mod generated {
     #![allow(clippy::all)]
     #![allow(clippy::pedantic)]
 
-    include!("gen/openfga.v1.rs");
+    include!("gen/openfga/v1/openfga.v1.rs");
 }
 
 pub mod client {
@@ -208,7 +208,10 @@ pub mod client {
     pub use super::client_ext::{BasicAuthLayer, BasicOpenFgaServiceClient};
     #[cfg(feature = "auth-middle")]
     pub use super::model_client::BasicOpenFgaClient;
-    pub use super::{generated::*, model_client::OpenFgaClient};
+    pub use super::{
+        generated::*,
+        model_client::{ConflictBehavior, OpenFgaClient, WriteOptions},
+    };
 }
 
 #[cfg(test)]

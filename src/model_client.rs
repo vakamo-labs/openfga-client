@@ -21,6 +21,60 @@ use crate::{
 
 const DEFAULT_MAX_TUPLES_PER_WRITE: i32 = 100;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Behavior when encountering conflicts during write operations.
+///
+/// See [OpenFGA documentation](https://openfga.dev/docs/getting-started/update-tuples#05-ignoring-duplicate-or-missing-tuples)
+/// for more details.
+pub enum ConflictBehavior {
+    /// Fail the operation on conflict (default behavior).
+    #[default]
+    Fail,
+    /// Ignore conflicts and continue processing.
+    Ignore,
+}
+
+impl ConflictBehavior {
+    fn as_str(&self) -> &str {
+        match self {
+            ConflictBehavior::Fail => "",
+            ConflictBehavior::Ignore => "ignore",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Options for write operations.
+///
+/// This allows you to control how OpenFGA handles duplicate writes and missing deletes.
+/// See [OpenFGA documentation](https://openfga.dev/docs/getting-started/update-tuples#05-ignoring-duplicate-or-missing-tuples)
+/// for more details.
+pub struct WriteOptions {
+    /// Behavior when writing a tuple that already exists.
+    pub on_duplicate: ConflictBehavior,
+    /// Behavior when deleting a tuple that doesn't exist.
+    pub on_missing: ConflictBehavior,
+}
+
+impl WriteOptions {
+    #[must_use]
+    pub fn new_idempotent() -> Self {
+        Self {
+            on_duplicate: ConflictBehavior::Ignore,
+            on_missing: ConflictBehavior::Ignore,
+        }
+    }
+}
+
+impl Default for WriteOptions {
+    fn default() -> Self {
+        Self {
+            on_duplicate: ConflictBehavior::Fail,
+            on_missing: ConflictBehavior::Fail,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 /// Wrapper around the generated [`OpenFgaServiceClient`].
 ///
@@ -73,7 +127,7 @@ pub type BasicOpenFgaClient = OpenFgaClient<crate::client::BasicAuthLayer>;
 
 impl<T> OpenFgaClient<T>
 where
-    T: tonic::client::GrpcService<tonic::body::BoxBody>,
+    T: tonic::client::GrpcService<tonic::body::Body>,
     T::Error: Into<StdError>,
     T::ResponseBody: Body<Data = Bytes> + Send + 'static,
     <T::ResponseBody as Body>::Error: Into<StdError> + Send,
@@ -174,6 +228,60 @@ where
         writes: impl Into<Option<Vec<TupleKey>>>,
         deletes: impl Into<Option<Vec<TupleKeyWithoutCondition>>>,
     ) -> Result<()> {
+        self.write_with_options(writes, deletes, WriteOptions::default())
+            .await
+    }
+
+    /// Write or delete tuples from FGA with custom conflict handling options.
+    /// This is a wrapper around [`OpenFgaServiceClient::write`] that ensures that:
+    ///
+    /// * Ensures the number of writes and deletes does not exceed OpenFGA's limit
+    /// * Does not send empty writes or deletes
+    /// * Traces any errors that occur
+    /// * Enriches the error with the `write_request` that caused the error
+    /// * Allows configuring behavior for duplicate writes and missing deletes
+    ///
+    /// All writes happen in a single transaction.
+    ///
+    /// OpenFGA currently has a default limit of 100 tuples per write
+    /// (sum of writes and deletes).
+    ///
+    /// This `write_with_options` method will fail if the number of writes and deletes exceeds
+    /// `max_tuples_per_write` which defaults to 100.
+    /// To change this limit, use [`Self::set_max_tuples_per_write`].
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use openfga_client::client::{ConflictBehavior, WriteOptions, OpenFgaClient, OpenFgaServiceClient};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let endpoint = "http://localhost:8080";
+    ///     let service_client = OpenFgaServiceClient::connect(endpoint).await?;
+    ///     let client = OpenFgaClient::new(service_client, "store_id", "model_id");
+    ///     
+    ///     let options = WriteOptions {
+    ///         on_duplicate: ConflictBehavior::Ignore,
+    ///         on_missing: ConflictBehavior::Ignore,
+    ///     };
+    ///
+    ///     let writes = vec![/* TupleKey instances */];
+    ///     client.write_with_options(writes, None, options).await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    /// * [`Error::TooManyWrites`] if the number of writes and deletes exceeds `max_tuples_per_write`
+    /// * [`Error::RequestFailed`] if the write request fails
+    ///
+    pub async fn write_with_options(
+        &self,
+        writes: impl Into<Option<Vec<TupleKey>>>,
+        deletes: impl Into<Option<Vec<TupleKeyWithoutCondition>>>,
+        options: WriteOptions,
+    ) -> Result<()> {
         let writes = writes.into().and_then(|w| (!w.is_empty()).then_some(w));
         let deletes = deletes.into().and_then(|d| (!d.is_empty()).then_some(d));
 
@@ -205,8 +313,12 @@ where
 
         let write_request = WriteRequest {
             store_id: self.store_id().to_string(),
-            writes: writes.map(|writes| WriteRequestWrites { tuple_keys: writes }),
+            writes: writes.map(|writes| WriteRequestWrites {
+                tuple_keys: writes,
+                on_duplicate: options.on_duplicate.as_str().to_string(),
+            }),
             deletes: deletes.map(|deletes| WriteRequestDeletes {
+                on_missing: options.on_missing.as_str().to_string(),
                 tuple_keys: deletes,
             }),
             authorization_model_id: self.authorization_model_id().to_string(),
@@ -779,6 +891,167 @@ mod tests {
                     .await
                     .unwrap()
             );
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn test_write_with_options_ignore_duplicate() {
+            let client = get_client_with_custom_roles_model().await;
+            let tuple = TupleKey {
+                user: "user:user1".to_string(),
+                relation: "member".to_string(),
+                object: "team:team1".to_string(),
+                condition: None,
+            };
+
+            // First write should succeed
+            client
+                .write_with_options(vec![tuple.clone()], None, WriteOptions::default())
+                .await
+                .unwrap();
+
+            // Second write with default options should fail
+            let result = client
+                .write_with_options(vec![tuple.clone()], None, WriteOptions::default())
+                .await;
+            assert!(result.is_err());
+
+            // Write with ignore duplicate should succeed
+            let options = WriteOptions {
+                on_duplicate: ConflictBehavior::Ignore,
+                on_missing: ConflictBehavior::Fail,
+            };
+            client
+                .write_with_options(vec![tuple], None, options)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn test_write_with_options_ignore_missing() {
+            let client = get_client_with_custom_roles_model().await;
+            let tuple_key = TupleKeyWithoutCondition {
+                user: "user:user1".to_string(),
+                relation: "member".to_string(),
+                object: "team:team1".to_string(),
+            };
+
+            // Delete non-existent tuple with default options should fail
+            let result = client
+                .write_with_options(None, vec![tuple_key.clone()], WriteOptions::default())
+                .await;
+            assert!(result.is_err());
+
+            // Delete with ignore missing should succeed
+            let options = WriteOptions {
+                on_duplicate: ConflictBehavior::Fail,
+                on_missing: ConflictBehavior::Ignore,
+            };
+            client
+                .write_with_options(None, vec![tuple_key], options)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn test_write_with_options_idempotent() {
+            let client = get_client_with_custom_roles_model().await;
+            let tuple = TupleKey {
+                user: "user:user1".to_string(),
+                relation: "member".to_string(),
+                object: "team:team1".to_string(),
+                condition: None,
+            };
+
+            let options = WriteOptions::new_idempotent();
+
+            // Write twice with idempotent options should succeed both times
+            client
+                .write_with_options(vec![tuple.clone()], None, options)
+                .await
+                .unwrap();
+            client
+                .write_with_options(vec![tuple], None, options)
+                .await
+                .unwrap();
+
+            // Delete non-existent tuple with idempotent options should succeed
+            let tuple_key = TupleKeyWithoutCondition {
+                user: "user:nonexistent".to_string(),
+                relation: "member".to_string(),
+                object: "team:team1".to_string(),
+            };
+            client
+                .write_with_options(None, vec![tuple_key], options)
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn test_write_with_options_mixed_operations() {
+            let client = get_client_with_custom_roles_model().await;
+
+            // First, write a tuple
+            let tuple1 = TupleKey {
+                user: "user:user1".to_string(),
+                relation: "member".to_string(),
+                object: "team:team1".to_string(),
+                condition: None,
+            };
+            client.write(vec![tuple1.clone()], None).await.unwrap();
+
+            // Now write a new tuple and delete the existing one in the same request
+            let tuple2 = TupleKey {
+                user: "user:user2".to_string(),
+                relation: "member".to_string(),
+                object: "team:team1".to_string(),
+                condition: None,
+            };
+            let delete_key = TupleKeyWithoutCondition {
+                user: tuple1.user,
+                relation: tuple1.relation,
+                object: tuple1.object,
+            };
+
+            client
+                .write_with_options(vec![tuple2], vec![delete_key], WriteOptions::default())
+                .await
+                .unwrap();
+
+            // Verify the old tuple is gone and the new one exists
+            let tuples = client
+                .read_all_pages(
+                    Some(TupleKeyWithoutCondition {
+                        user: String::new(),
+                        relation: "member".to_string(),
+                        object: "team:team1".to_string(),
+                    }),
+                    10,
+                    10,
+                )
+                .await
+                .unwrap();
+            assert_eq!(tuples.len(), 1);
+            assert_eq!(tuples[0].key.as_ref().unwrap().user, "user:user2");
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn test_write_with_options_empty_operations() {
+            let client = get_client_with_custom_roles_model().await;
+
+            // Writing with empty writes and deletes should succeed without making a request
+            let result = client
+                .write_with_options(
+                    None::<Vec<TupleKey>>,
+                    None::<Vec<TupleKeyWithoutCondition>>,
+                    WriteOptions::default(),
+                )
+                .await;
+            assert!(result.is_ok());
         }
     }
 }

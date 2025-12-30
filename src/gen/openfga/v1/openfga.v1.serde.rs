@@ -11832,9 +11832,15 @@ impl serde::Serialize for WriteRequestDeletes {
         if !self.tuple_keys.is_empty() {
             len += 1;
         }
+        if !self.on_missing.is_empty() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("openfga.v1.WriteRequestDeletes", len)?;
         if !self.tuple_keys.is_empty() {
             struct_ser.serialize_field("tuple_keys", &self.tuple_keys)?;
+        }
+        if !self.on_missing.is_empty() {
+            struct_ser.serialize_field("on_missing", &self.on_missing)?;
         }
         struct_ser.end()
     }
@@ -11847,11 +11853,13 @@ impl<'de> serde::Deserialize<'de> for WriteRequestDeletes {
     {
         const FIELDS: &[&str] = &[
             "tuple_keys",
+            "on_missing",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             TupleKeys,
+            OnMissing,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -11874,6 +11882,7 @@ impl<'de> serde::Deserialize<'de> for WriteRequestDeletes {
                     {
                         match value {
                             "tuple_keys" => Ok(GeneratedField::TupleKeys),
+                            "on_missing" => Ok(GeneratedField::OnMissing),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -11894,6 +11903,7 @@ impl<'de> serde::Deserialize<'de> for WriteRequestDeletes {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut tuple_keys__ = None;
+                let mut on_missing__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::TupleKeys => {
@@ -11902,10 +11912,17 @@ impl<'de> serde::Deserialize<'de> for WriteRequestDeletes {
                             }
                             tuple_keys__ = Some(map_.next_value()?);
                         }
+                        GeneratedField::OnMissing => {
+                            if on_missing__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("on_missing"));
+                            }
+                            on_missing__ = Some(map_.next_value()?);
+                        }
                     }
                 }
                 Ok(WriteRequestDeletes {
                     tuple_keys: tuple_keys__.unwrap_or_default(),
+                    on_missing: on_missing__.unwrap_or_default(),
                 })
             }
         }
@@ -11923,9 +11940,15 @@ impl serde::Serialize for WriteRequestWrites {
         if !self.tuple_keys.is_empty() {
             len += 1;
         }
+        if !self.on_duplicate.is_empty() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("openfga.v1.WriteRequestWrites", len)?;
         if !self.tuple_keys.is_empty() {
             struct_ser.serialize_field("tuple_keys", &self.tuple_keys)?;
+        }
+        if !self.on_duplicate.is_empty() {
+            struct_ser.serialize_field("on_duplicate", &self.on_duplicate)?;
         }
         struct_ser.end()
     }
@@ -11938,11 +11961,13 @@ impl<'de> serde::Deserialize<'de> for WriteRequestWrites {
     {
         const FIELDS: &[&str] = &[
             "tuple_keys",
+            "on_duplicate",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             TupleKeys,
+            OnDuplicate,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -11965,6 +11990,7 @@ impl<'de> serde::Deserialize<'de> for WriteRequestWrites {
                     {
                         match value {
                             "tuple_keys" => Ok(GeneratedField::TupleKeys),
+                            "on_duplicate" => Ok(GeneratedField::OnDuplicate),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -11985,6 +12011,7 @@ impl<'de> serde::Deserialize<'de> for WriteRequestWrites {
                     V: serde::de::MapAccess<'de>,
             {
                 let mut tuple_keys__ = None;
+                let mut on_duplicate__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::TupleKeys => {
@@ -11993,10 +12020,17 @@ impl<'de> serde::Deserialize<'de> for WriteRequestWrites {
                             }
                             tuple_keys__ = Some(map_.next_value()?);
                         }
+                        GeneratedField::OnDuplicate => {
+                            if on_duplicate__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("on_duplicate"));
+                            }
+                            on_duplicate__ = Some(map_.next_value()?);
+                        }
                     }
                 }
                 Ok(WriteRequestWrites {
                     tuple_keys: tuple_keys__.unwrap_or_default(),
+                    on_duplicate: on_duplicate__.unwrap_or_default(),
                 })
             }
         }
