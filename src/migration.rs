@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use futures_timer::Delay;
 use tonic::codegen::{Body, Bytes, StdError};
 
 use crate::{
@@ -274,6 +275,12 @@ where
                     tracing::error!("Error writing model: {:?}", e);
                     Error::RequestFailed(Box::new(e))
                 })?;
+            tracing::info!(
+                "Model version {} written to OpenFGA store {} with model id {}",
+                migration.model.version(),
+                self.store_name,
+                written_model.get_ref().authorization_model_id,
+            );
             tracing::debug!("Model written: {:?}", written_model);
 
             // Update model versions passed to migration hooks.
@@ -429,11 +436,42 @@ where
             deletes: None,
             authorization_model_id: authorization_model_id.clone(),
         };
-        client.write(write_request.clone()).await.map_err(|e| {
-            tracing::error!("Error marking model as applied: {:?}", e);
-            Error::RequestFailed(Box::new(e))
-        })?;
-        Ok(())
+
+        // Retry once per second for up to 5 attempts (4 seconds max wait) to handle replication lag
+        let max_retries = 5;
+        let retry_delay = std::time::Duration::from_secs(1);
+
+        for attempt in 0..max_retries {
+            match client.write(write_request.clone()).await {
+                Ok(_) => {
+                    if attempt > 0 {
+                        tracing::info!(
+                            "Successfully marked model {version} as applied after {attempt} retries",
+                        );
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt == max_retries {
+                        tracing::error!(
+                            "Error marking model as applied after {} retries: {:?}",
+                            max_retries,
+                            e
+                        );
+                        return Err(Error::RequestFailed(Box::new(e)));
+                    }
+
+                    tracing::warn!(
+                        "Failed to mark model as applied (attempt {}/{max_retries}), retrying in {retry_delay:?}: {e:?}",
+                        attempt + 1,
+                    );
+
+                    Delay::new(retry_delay).await;
+                }
+            }
+        }
+
+        unreachable!();
     }
 
     /// Get all migrations that have been added to the manager
