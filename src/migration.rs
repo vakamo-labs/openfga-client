@@ -437,11 +437,11 @@ where
             authorization_model_id: authorization_model_id.clone(),
         };
 
-        // Retry once per second for up to 5 seconds to handle replication lag
+        // Retry once per second for up to 5 attempts (4 seconds max wait) to handle replication lag
         let max_retries = 5;
         let retry_delay = std::time::Duration::from_secs(1);
 
-        for attempt in 0..=max_retries {
+        for attempt in 0..max_retries {
             match client.write(write_request.clone()).await {
                 Ok(_) => {
                     if attempt > 0 {
