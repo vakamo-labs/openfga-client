@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add write retry logic ([#30](https://github.com/vakamo-labs/openfga-client/pull/30))
+- Add ModelManager retry logic after model write ([#30](https://github.com/vakamo-labs/openfga-client/pull/30))
 
 ## [0.5.0](https://github.com/vakamo-labs/openfga-client/compare/v0.4.0...v0.5.0) - 2025-12-30
 
