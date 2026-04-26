@@ -228,13 +228,13 @@ where
                 .into_inner();
             tuples.extend(response.tuples);
             continuation_token.clone_from(&response.continuation_token);
-            if continuation_token.is_empty() || count > max_pages {
-                if count > max_pages {
-                    return Err(Error::TooManyPages { max_pages, tuple });
-                }
+            count += 1;
+            if count > max_pages {
+                return Err(Error::TooManyPages { max_pages, tuple });
+            }
+            if continuation_token.is_empty() {
                 break;
             }
-            count += 1;
         }
 
         Ok(tuples)
@@ -525,6 +525,65 @@ pub(crate) mod test {
                 total,
                 "unfiltered read_all_pages must return every tuple in the store"
             );
+        }
+
+        /// Regression test for the off-by-two pagination cap.
+        ///
+        /// `max_pages = N` is contractually documented as "the read errors if
+        /// the response would require more than N pages". The pre-fix logic
+        /// allowed up to `N + 2` pages of data to come back successfully (the
+        /// counter was checked before being incremented, so `count > max_pages`
+        /// only fired two iterations after the limit was reached).
+        ///
+        /// We write enough data to require 3 pages and ask for `max_pages = 1`
+        /// — the call must error with [`Error::TooManyPages`], not return
+        /// silently.
+        #[tokio::test]
+        async fn test_read_all_pages_max_pages_enforced() {
+            let (mut client, store) = new_store().await;
+            let auth_model = create_entitlements_model(&mut client, &store).await;
+
+            // 3 pages worth at page_size=100 → 250 tuples.
+            for i in 0..250 {
+                client
+                    .write(WriteRequest {
+                        authorization_model_id: auth_model.authorization_model_id.clone(),
+                        store_id: store.id.clone(),
+                        writes: Some(WriteRequestWrites {
+                            on_duplicate: String::new(),
+                            tuple_keys: vec![TupleKey {
+                                user: format!("user:u-{i}"),
+                                relation: "member".to_string(),
+                                object: "organization:org-1".to_string(),
+                                condition: None,
+                            }],
+                        }),
+                        deletes: None,
+                    })
+                    .await
+                    .expect("write can be done");
+            }
+
+            let result = client
+                .read_all_pages(
+                    &store.id,
+                    None::<ReadRequestTupleKey>,
+                    ConsistencyPreference::HigherConsistency,
+                    100,
+                    1, // strictly fewer than the 3 pages of data
+                )
+                .await;
+
+            match result {
+                Err(Error::TooManyPages { max_pages, .. }) => {
+                    assert_eq!(max_pages, 1);
+                }
+                Err(other) => panic!("expected TooManyPages, got {other:?}"),
+                Ok(tuples) => panic!(
+                    "expected TooManyPages error, got Ok with {} tuples",
+                    tuples.len()
+                ),
+            }
         }
     }
 }
