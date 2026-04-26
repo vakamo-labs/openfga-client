@@ -177,6 +177,19 @@ where
 
     /// Wrapper around [`Self::read`] that reads all pages of the result, handling pagination.
     ///
+    /// `tuple` may be:
+    ///
+    /// * `Some(filter)` — returns tuples matching the filter. The OpenFGA
+    ///   server requires `filter.object` to specify at least an object type,
+    ///   AND requires either a non-empty `filter.user` or a non-empty object
+    ///   id; a bare `"type:"` prefix on its own is rejected.
+    /// * `None` — **enumerates every tuple in the store**, paginating to
+    ///   completion. This is the supported global-tuple-enumeration primitive
+    ///   and is what the OpenFGA CLI's `fga store export` uses internally.
+    ///
+    /// `page_size` is capped at 100 by the OpenFGA Read RPC (proto-level
+    /// validation, not configurable).
+    ///
     /// # Errors
     /// * [`Error::RequestFailed`] If a request to OpenFGA fails.
     /// * [`Error::TooManyPages`] If the number of pages read exceeds `max_pages`.
@@ -459,6 +472,59 @@ pub(crate) mod test {
                 .expect("Read can be done");
 
             assert!(tuples.is_empty());
+        }
+
+        /// Direct low-level verification that `read_all_pages` with no filter
+        /// (`tuple=None`) returns *every* tuple in the store, across multiple
+        /// pages. Mirrors the high-level test in
+        /// `model_client::tests::openfga::test_read_all_pages_empty_tuple` but
+        /// exercises the [`OpenFgaServiceClient::read_all_pages`] entry point
+        /// directly so it doesn't regress if the high-level wrapper changes.
+        #[tokio::test]
+        async fn test_read_all_pages_unfiltered() {
+            let (mut client, store) = new_store().await;
+            let auth_model = create_entitlements_model(&mut client, &store).await;
+
+            // 250 distinct (user, relation, object) tuples spread across multiple
+            // objects so no single-key filter could fetch them. With page_size=100,
+            // this forces 3 pages of pagination.
+            let total = 250;
+            for i in 0..total {
+                client
+                    .write(WriteRequest {
+                        authorization_model_id: auth_model.authorization_model_id.clone(),
+                        store_id: store.id.clone(),
+                        writes: Some(WriteRequestWrites {
+                            on_duplicate: String::new(),
+                            tuple_keys: vec![TupleKey {
+                                user: format!("user:u-{i}"),
+                                relation: "member".to_string(),
+                                object: format!("organization:org-{}", i % 5),
+                                condition: None,
+                            }],
+                        }),
+                        deletes: None,
+                    })
+                    .await
+                    .expect("write can be done");
+            }
+
+            let tuples = client
+                .read_all_pages(
+                    &store.id,
+                    None::<ReadRequestTupleKey>,
+                    ConsistencyPreference::HigherConsistency,
+                    100,
+                    10,
+                )
+                .await
+                .expect("unfiltered read_all_pages must succeed");
+
+            assert_eq!(
+                tuples.len(),
+                total,
+                "unfiltered read_all_pages must return every tuple in the store"
+            );
         }
     }
 }
