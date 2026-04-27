@@ -177,6 +177,19 @@ where
 
     /// Wrapper around [`Self::read`] that reads all pages of the result, handling pagination.
     ///
+    /// `tuple` may be:
+    ///
+    /// * `Some(filter)` — returns tuples matching the filter. The OpenFGA
+    ///   server requires `filter.object` to specify at least an object type,
+    ///   AND requires either a non-empty `filter.user` or a non-empty object
+    ///   id; a bare `"type:"` prefix on its own is rejected.
+    /// * `None` — **enumerates every tuple in the store**, paginating to
+    ///   completion. This is the supported global-tuple-enumeration primitive
+    ///   and is what the OpenFGA CLI's `fga store export` uses internally.
+    ///
+    /// `page_size` is capped at 100 by the OpenFGA Read RPC (proto-level
+    /// validation, not configurable).
+    ///
     /// # Errors
     /// * [`Error::RequestFailed`] If a request to OpenFGA fails.
     /// * [`Error::TooManyPages`] If the number of pages read exceeds `max_pages`.
@@ -215,13 +228,13 @@ where
                 .into_inner();
             tuples.extend(response.tuples);
             continuation_token.clone_from(&response.continuation_token);
-            if continuation_token.is_empty() || count > max_pages {
-                if count > max_pages {
-                    return Err(Error::TooManyPages { max_pages, tuple });
-                }
+            count += 1;
+            if count > max_pages {
+                return Err(Error::TooManyPages { max_pages, tuple });
+            }
+            if continuation_token.is_empty() {
                 break;
             }
-            count += 1;
         }
 
         Ok(tuples)
@@ -459,6 +472,118 @@ pub(crate) mod test {
                 .expect("Read can be done");
 
             assert!(tuples.is_empty());
+        }
+
+        /// Direct low-level verification that `read_all_pages` with no filter
+        /// (`tuple=None`) returns *every* tuple in the store, across multiple
+        /// pages. Mirrors the high-level test in
+        /// `model_client::tests::openfga::test_read_all_pages_empty_tuple` but
+        /// exercises the [`OpenFgaServiceClient::read_all_pages`] entry point
+        /// directly so it doesn't regress if the high-level wrapper changes.
+        #[tokio::test]
+        async fn test_read_all_pages_unfiltered() {
+            let (mut client, store) = new_store().await;
+            let auth_model = create_entitlements_model(&mut client, &store).await;
+
+            // 250 distinct (user, relation, object) tuples spread across multiple
+            // objects so no single-key filter could fetch them. With page_size=100,
+            // this forces 3 pages of pagination.
+            let total = 250;
+            for i in 0..total {
+                client
+                    .write(WriteRequest {
+                        authorization_model_id: auth_model.authorization_model_id.clone(),
+                        store_id: store.id.clone(),
+                        writes: Some(WriteRequestWrites {
+                            on_duplicate: String::new(),
+                            tuple_keys: vec![TupleKey {
+                                user: format!("user:u-{i}"),
+                                relation: "member".to_string(),
+                                object: format!("organization:org-{}", i % 5),
+                                condition: None,
+                            }],
+                        }),
+                        deletes: None,
+                    })
+                    .await
+                    .expect("write can be done");
+            }
+
+            let tuples = client
+                .read_all_pages(
+                    &store.id,
+                    None::<ReadRequestTupleKey>,
+                    ConsistencyPreference::HigherConsistency,
+                    100,
+                    10,
+                )
+                .await
+                .expect("unfiltered read_all_pages must succeed");
+
+            assert_eq!(
+                tuples.len(),
+                total,
+                "unfiltered read_all_pages must return every tuple in the store"
+            );
+        }
+
+        /// Regression test for the off-by-two pagination cap.
+        ///
+        /// `max_pages = N` is contractually documented as "the read errors if
+        /// the response would require more than N pages". The pre-fix logic
+        /// allowed up to `N + 2` pages of data to come back successfully (the
+        /// counter was checked before being incremented, so `count > max_pages`
+        /// only fired two iterations after the limit was reached).
+        ///
+        /// We write enough data to require 3 pages and ask for `max_pages = 1`
+        /// — the call must error with [`Error::TooManyPages`], not return
+        /// silently.
+        #[tokio::test]
+        async fn test_read_all_pages_max_pages_enforced() {
+            let (mut client, store) = new_store().await;
+            let auth_model = create_entitlements_model(&mut client, &store).await;
+
+            // 3 pages worth at page_size=100 → 250 tuples.
+            for i in 0..250 {
+                client
+                    .write(WriteRequest {
+                        authorization_model_id: auth_model.authorization_model_id.clone(),
+                        store_id: store.id.clone(),
+                        writes: Some(WriteRequestWrites {
+                            on_duplicate: String::new(),
+                            tuple_keys: vec![TupleKey {
+                                user: format!("user:u-{i}"),
+                                relation: "member".to_string(),
+                                object: "organization:org-1".to_string(),
+                                condition: None,
+                            }],
+                        }),
+                        deletes: None,
+                    })
+                    .await
+                    .expect("write can be done");
+            }
+
+            let result = client
+                .read_all_pages(
+                    &store.id,
+                    None::<ReadRequestTupleKey>,
+                    ConsistencyPreference::HigherConsistency,
+                    100,
+                    1, // strictly fewer than the 3 pages of data
+                )
+                .await;
+
+            match result {
+                Err(Error::TooManyPages { max_pages, .. }) => {
+                    assert_eq!(max_pages, 1);
+                }
+                Err(other) => panic!("expected TooManyPages, got {other:?}"),
+                Ok(tuples) => panic!(
+                    "expected TooManyPages error, got Ok with {} tuples",
+                    tuples.len()
+                ),
+            }
         }
     }
 }

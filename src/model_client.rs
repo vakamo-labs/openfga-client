@@ -338,25 +338,67 @@ where
             .map(|_| ())
     }
 
-    /// Read tuples from OpenFGA.
+    /// Read tuples from OpenFGA, single page.
+    ///
+    /// `tuple_key` may be:
+    ///
+    /// * A specific [`ReadRequestTupleKey`] — returns tuples matching that
+    ///   filter. The OpenFGA server requires the filter to specify either a
+    ///   non-empty `user` or a non-empty object id (a bare `"type:"` prefix is
+    ///   *not* enough on its own).
+    /// * `None` — returns **every tuple in the store**, no filter applied.
+    ///   This is the same primitive used by the OpenFGA CLI's
+    ///   `fga store export` and is the only way to enumerate tuples without
+    ///   already knowing every user/object id.
+    ///
+    /// Note that OpenFGA's `Read` RPC caps `page_size` at 100 (proto-level
+    /// validation, not configurable). Larger requested values are rejected.
+    ///
     /// This is a wrapper around [`OpenFgaServiceClient::read`] that:
     ///
     /// * Traces any errors that occur
     /// * Enriches the error with the `read_request` that caused the error
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use openfga_client::client::{OpenFgaClient, OpenFgaServiceClient, ReadRequestTupleKey};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let service_client = OpenFgaServiceClient::connect("http://localhost:8080").await?;
+    /// let client = OpenFgaClient::new(service_client, "store_id", "model_id");
+    ///
+    /// // Filtered read — bare ReadRequestTupleKey is auto-wrapped via Into<Option<_>>.
+    /// let _filtered = client
+    ///     .read(
+    ///         100,
+    ///         ReadRequestTupleKey {
+    ///             user: "user:alice".to_string(),
+    ///             relation: "member".to_string(),
+    ///             object: "team:".to_string(),
+    ///         },
+    ///         None::<String>,
+    ///     )
+    ///     .await?;
+    ///
+    /// // Unfiltered — pass `None` to enumerate everything in the store.
+    /// let _all = client.read(100, None, None::<String>).await?;
+    /// # Ok(()) }
+    /// ```
     ///
     /// # Errors
     /// * [`Error::RequestFailed`] if the read request fails
     pub async fn read(
         &self,
         page_size: i32,
-        tuple_key: impl Into<ReadRequestTupleKey>,
+        tuple_key: impl Into<Option<ReadRequestTupleKey>>,
         continuation_token: impl Into<Option<String>>,
     ) -> Result<tonic::Response<ReadResponse>> {
         let read_request = ReadRequest {
             store_id: self.store_id().to_string(),
             page_size: Some(page_size),
             continuation_token: continuation_token.into().unwrap_or_default(),
-            tuple_key: Some(tuple_key.into()),
+            tuple_key: tuple_key.into(),
             consistency: self.consistency().into(),
         };
         self.client
@@ -373,7 +415,17 @@ where
     }
 
     /// Read all tuples, with pagination.
-    /// For details on the parameters, see [`OpenFgaServiceClient::read_all_pages`].
+    ///
+    /// `tuple` may be:
+    ///
+    /// * `Some(filter)` — returns tuples matching the filter (paginated). Same
+    ///   server-side filter requirements as [`Self::read`].
+    /// * `None` — **enumerates every tuple in the store**, paginating to
+    ///   completion. This is the supported way to back up or audit a store and
+    ///   is what the OpenFGA CLI's `fga store export` uses internally.
+    ///
+    /// For details on the other parameters, see
+    /// [`OpenFgaServiceClient::read_all_pages`].
     ///
     /// # Errors
     /// * [`Error::RequestFailed`] If a request to OpenFGA fails.
@@ -721,6 +773,114 @@ mod tests {
             OpenFgaClient::new(service_client, &store.id, auth_model_id.as_str())
         }
 
+        /// Verifies that the single-page [`OpenFgaClient::read`] honours
+        /// `tuple_key=None` as "no filter" and returns store-wide tuples,
+        /// providing a continuation token when more pages are available.
+        #[tokio::test]
+        #[traced_test]
+        async fn test_read_single_page_unfiltered() {
+            let client = get_client_with_custom_roles_model().await;
+
+            // Write 75 tuples — small enough to fit in one page of 100 but
+            // larger than a page of 50 so we also exercise the continuation token.
+            let total = 75;
+            for i in 0..total {
+                client
+                    .write(
+                        vec![TupleKey {
+                            user: format!("user:user{i}"),
+                            relation: "member".to_string(),
+                            object: "team:team1".to_string(),
+                            condition: None,
+                        }],
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            // page_size=100: one page, no continuation, all 75 returned.
+            let resp = client
+                .read(100, None, None::<String>)
+                .await
+                .expect("read with None tuple_key must succeed");
+            let inner = resp.into_inner();
+            assert_eq!(inner.tuples.len(), total);
+            assert!(
+                inner.continuation_token.is_empty(),
+                "continuation token must be empty when all results fit in one page"
+            );
+
+            // page_size=50: first page returns 50, with a non-empty continuation.
+            let resp = client
+                .read(50, None, None::<String>)
+                .await
+                .expect("read with None tuple_key must succeed");
+            let inner = resp.into_inner();
+            assert_eq!(inner.tuples.len(), 50);
+            assert!(
+                !inner.continuation_token.is_empty(),
+                "continuation token must be set when more pages are available"
+            );
+
+            // Follow the continuation; remaining 25 tuples come back, no further pages.
+            let resp = client
+                .read(50, None, Some(inner.continuation_token))
+                .await
+                .expect("read with continuation token must succeed");
+            let inner = resp.into_inner();
+            assert_eq!(inner.tuples.len(), total - 50);
+            assert!(inner.continuation_token.is_empty());
+        }
+
+        /// Verifies that the bare-`ReadRequestTupleKey` call pattern (used
+        /// throughout this codebase before the signature was widened to accept
+        /// `Option<...>`) still compiles and works. Relies on the
+        /// `T: Into<Option<T>>` blanket impl.
+        #[tokio::test]
+        #[traced_test]
+        async fn test_read_single_page_filtered_backward_compat() {
+            let client = get_client_with_custom_roles_model().await;
+
+            client
+                .write(
+                    vec![
+                        TupleKey {
+                            user: "user:alice".to_string(),
+                            relation: "member".to_string(),
+                            object: "team:team1".to_string(),
+                            condition: None,
+                        },
+                        TupleKey {
+                            user: "user:bob".to_string(),
+                            relation: "member".to_string(),
+                            object: "team:team2".to_string(),
+                            condition: None,
+                        },
+                    ],
+                    None,
+                )
+                .await
+                .unwrap();
+
+            // Pass `ReadRequestTupleKey` directly — no `Some(...)` wrap.
+            let resp = client
+                .read(
+                    100,
+                    ReadRequestTupleKey {
+                        user: String::new(),
+                        relation: "member".to_string(),
+                        object: "team:team1".to_string(),
+                    },
+                    None::<String>,
+                )
+                .await
+                .unwrap();
+            let inner = resp.into_inner();
+            assert_eq!(inner.tuples.len(), 1);
+            assert_eq!(inner.tuples[0].key.as_ref().unwrap().user, "user:alice");
+        }
+
         /// Verifies that all pages are read when *not* passing a `ReadRequestTupleKey`.
         #[tokio::test]
         #[traced_test]
@@ -991,6 +1151,7 @@ mod tests {
 
         #[tokio::test]
         #[traced_test]
+        #[allow(clippy::similar_names)]
         async fn test_write_with_options_mixed_operations() {
             let client = get_client_with_custom_roles_model().await;
 
