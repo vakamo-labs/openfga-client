@@ -1,0 +1,14 @@
+[workspace]
+# Run cargo-semver-checks against published crate to detect API-breaking
+# changes. When a break is detected, release-plz forces a major bump even if
+# the commit message omitted `feat!:` / `BREAKING CHANGE:`. For 0.x crates,
+# "major" means 0.x → 0.(x+1).0.
+semver_check = true
+
+# Require all releases to pass through a PR (default true, made explicit).
+release_always = true
+
+[[package]]
+name = "openfga-client"
+# Always check semver before publishing this package.
+semver_check = true
