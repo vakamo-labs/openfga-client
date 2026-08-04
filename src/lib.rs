@@ -18,7 +18,6 @@
 //!
 //! * Type-safe client for OpenFGA (gRPC) build on `tonic`
 //! * (JSON) Serialization and deserialization for Authorization Models in addition to protobuf Messages
-//! * Uses `vendored-protoc` for well-known types - Rust files are pre-generated.
 //! * Optional Authorization Model management with Migration hooks. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without re-writing of Authorization Models on startup.
 //! * Optional Authentication (Bearer or Client Credentials) via the [Middle Crate](https://crates.io/crates/middle). (Feature: `auth-middle`)
 //! * Convenience functions like `read_all_tuples` (handles pagination), `get_store_by_name` and more.
