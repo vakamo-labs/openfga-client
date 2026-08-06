@@ -26,7 +26,7 @@ middle = { version = "0.5.0", optional = true, features = ["tonic"] }
 prost = { version = "0.14", features = ["std"] }
 prost-types = "0.14"
 prost-wkt = "0.7"
-prost-wkt-types = { version = "0.7", features = ["vendored-protoc"] }
+prost-wkt-types = { version = "0.7", features = ["vendored-protox"] }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = { version = "2.0" }
 tonic = { version = "0.14", default-features = false, features = [

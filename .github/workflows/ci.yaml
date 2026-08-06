@@ -37,6 +37,7 @@ jobs:
       - docs
       - test
       - test-min
+      - build-windows
     steps:
       - run: exit 0
 
@@ -61,8 +62,6 @@ jobs:
     steps:
       - run: sudo snap install --edge --classic just
       - uses: actions/checkout@v7
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
       - name: Install Rust ${{ env.rust_toolchain }}
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -130,3 +129,22 @@ jobs:
           RUSTFLAGS: ${{ env.RUSTFLAGS }}
           RUST_BACKTRACE: ${{ env.RUST_BACKTRACE }}
           TEST_OPENFGA_CLIENT_GRPC_URL: http://localhost:36081
+
+  build-windows:
+    name: build-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust ${{ env.rust_stable }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.rust_stable }}
+      - uses: Swatinem/rust-cache@v2
+      # protobuf-src can never work here: protobuf_src::protoc() returns a path
+      # without the .exe suffix. No --features flags are passed, which also keeps
+      # aws-lc-sys (via tls-rustls or auth-middle) and its NASM requirement out.
+      - name: "cargo build"
+        run: cargo build
+        env:
+          RUSTFLAGS: ${{ env.RUSTFLAGS }}
+          RUST_BACKTRACE: ${{ env.RUST_BACKTRACE }}
