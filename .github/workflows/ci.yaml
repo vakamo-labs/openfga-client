@@ -140,9 +140,9 @@ jobs:
         with:
           toolchain: ${{ env.rust_stable }}
       - uses: Swatinem/rust-cache@v2
-      # Nothing installs protoc or cmake here, so reintroducing a native
-      # protobuf build fails this job. Default features only: tls-rustls pulls
-      # aws-lc-sys, which needs NASM for reasons unrelated to protobuf.
+      # protobuf-src can never work here: protobuf_src::protoc() returns a path
+      # without the .exe suffix. No --features flags are passed, which also keeps
+      # aws-lc-sys (via tls-rustls or auth-middle) and its NASM requirement out.
       - name: "cargo build"
         run: cargo build
         env:
