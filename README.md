@@ -10,6 +10,7 @@ OpenFGA Rust Client is a type-safe gRPC client for OpenFGA with optional Authori
 
 * Type-safe client for OpenFGA (gRPC) build on `tonic`
 * (JSON) Serialization and deserialization for Authorization Models in addition to protobuf Messages
+* Uses `vendored-protox` for well-known types - no `protoc`, `CMake` or C/C++ compiler needed. Rust files are pre-generated.
 * Optional Authorization Model management with Migration hooks. Ideal for stateless deployments. State is managed exclusively in OpenFGA. This enables fully automated model management by your Application without re-writing of Authorization Models on startup.
 * Optional Authentication (Bearer or Client Credentials) via the [Middle Crate](https://crates.io/crates/middle). (Feature: `auth-middle`)
 * Optional TLS support for secure HTTPS connections (Features: `tls-rustls`, `tls-native-roots`, `tls-webpki-roots`)
